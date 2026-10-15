@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# berkas kunci Office yang tertinggal
+~$*
+
+# kunci API, tidak boleh ikut terbawa
+.ors_key
+*.key
+ors_key.txt
