@@ -17,13 +17,23 @@ import random
 import time
 from copy import deepcopy
 
+from dataloader_v2 import (
+    BETA,
+    M,
+    P,
+    PROJECT_ROOT,
+    ROUTE_COST_TYPE,
+    _arc,
+    _arc_cost as _distance,
+    _euclidean,
+    _to_float,
+    _to_node_id,
+    load_lrp_data,
+    validate_dataset,
+)
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 DATA_PATH = os.path.join(PROJECT_ROOT, "data", "lrp_prins_option_b_20_5_1a_nodes.csv")
-BETA = 70.0
-M = 5
-P = None
-ROUTE_COST_TYPE = 0
 
 NUM_PARTICLES = 35
 MAX_ITERATIONS = 80
@@ -35,73 +45,6 @@ SEED = 42
 POSITION_BOUNDS = (0.0, 1.0)
 VELOCITY_BOUNDS = (-0.25, 0.25)
 BIG_PENALTY = 1_000_000.0
-
-
-def _to_float(value, field_name, node_id):
-    if value is None or str(value).strip() == "":
-        raise ValueError(f"Missing {field_name} for node {node_id}.")
-    return float(value)
-
-
-def _to_node_id(value, fallback):
-    if value is None or str(value).strip() == "":
-        return fallback
-    text = str(value).strip()
-    try:
-        number = float(text)
-    except ValueError:
-        return text
-    return int(number) if number.is_integer() else text
-
-
-def _distance(a, b):
-    euclidean = math.hypot(a[0] - b[0], a[1] - b[1])
-    return float(int(euclidean * 100.0)) if ROUTE_COST_TYPE == 0 else euclidean
-
-
-def load_lrp_data(data_path=DATA_PATH, max_nodes=None, beta=BETA, m=M, p=P):
-    with open(data_path, "r", newline="", encoding="utf-8-sig") as csv_file:
-        rows = list(csv.DictReader(csv_file))
-    if max_nodes is not None:
-        rows = rows[:max_nodes]
-    if not rows:
-        raise ValueError(f"No rows found in {data_path}")
-
-    V, coords, d, l = [], {}, {}, {}
-    for index, row in enumerate(rows):
-        node_id = _to_node_id(row.get("node_id"), index)
-        V.append(node_id)
-        coords[node_id] = (_to_float(row.get("x"), "x", node_id), _to_float(row.get("y"), "y", node_id))
-        d[node_id] = _to_float(row.get("demand"), "demand", node_id)
-        l[node_id] = _to_float(row.get("opening_cost"), "opening_cost", node_id)
-
-    beta = float(beta)
-    m = int(m)
-    c = {u: beta for u in V}
-    E = [(u, v) for u in V for v in V if u != v]
-    delta = {(u, v): _distance(coords[u], coords[v]) for u, v in E}
-    validate_dataset(V, coords, d, l, c, beta, m)
-    return V, E, coords, delta, d, l, c, beta, m, p
-
-
-def validate_dataset(V, coords, d, l, c, beta, m):
-    if beta <= 0 or m <= 0:
-        raise ValueError("beta and m must be positive.")
-    if beta * m < sum(d.values()):
-        raise ValueError("Fleet capacity beta*m is insufficient.")
-    for u in V:
-        if u not in coords:
-            raise ValueError(f"Missing coordinates for node {u}.")
-        if d[u] < 0:
-            raise ValueError(f"Negative demand for node {u}.")
-        if l[u] < 0:
-            raise ValueError(f"Negative opening cost for node {u}.")
-        if abs(c[u] - beta) > 1e-9:
-            raise ValueError(f"Depot capacity for node {u} must equal beta.")
-
-
-def _arc(delta, u, v):
-    return 0.0 if u == v else delta[u, v]
 
 
 def normalize_values(values):

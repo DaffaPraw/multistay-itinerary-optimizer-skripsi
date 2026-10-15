@@ -167,5 +167,45 @@ def print_dataset_summary(data_path=DATA_PATH):
     print(f"opening cost max : {max(l.values()):.2f}")
 
 
+def _arc(delta, u, v):
+    return 0.0 if u == v else delta[u, v]
+
+
+def validate_dataset(V, coords, d, l, c, beta, m):
+    if beta <= 0 or m <= 0:
+        raise ValueError("beta and m must be positive.")
+    if beta * m < sum(d.values()):
+        raise ValueError("Fleet capacity beta*m is insufficient.")
+    for u in V:
+        if u not in coords:
+            raise ValueError(f"Missing coordinates for node {u}.")
+        if d[u] < 0:
+            raise ValueError(f"Negative demand for node {u}.")
+        if l[u] < 0:
+            raise ValueError(f"Negative opening cost for node {u}.")
+        if abs(c[u] - beta) > 1e-9:
+            raise ValueError(f"Depot capacity for node {u} must equal beta.")
+
+
 if __name__ == "__main__":
     print_dataset_summary()
+
+
+def _arc(delta, u, v):
+    return 0.0 if u == v else delta[u, v]
+
+
+def validate_dataset(V, coords, d, l, c, beta, m):
+    if beta <= 0 or m <= 0:
+        raise ValueError("beta and m must be positive.")
+    if beta * m < sum(d.values()):
+        raise ValueError("Fleet capacity beta*m is insufficient.")
+    for u in V:
+        if u not in coords:
+            raise ValueError(f"Missing coordinates for node {u}.")
+        if d[u] < 0:
+            raise ValueError(f"Negative demand for node {u}.")
+        if l[u] < 0:
+            raise ValueError(f"Negative opening cost for node {u}.")
+        if abs(c[u] - beta) > 1e-9:
+            raise ValueError(f"Depot capacity for node {u} must equal beta.")
