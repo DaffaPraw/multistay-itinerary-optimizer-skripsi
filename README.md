@@ -31,6 +31,11 @@ Skor disusun dari rating dan jumlah ulasan lewat persamaan (3.1) sampai (3.5):
 rating diseragamkan ke skala lima, dijadikan skor mutu, jumlah ulasan jadi skor
 popularitas secara logaritmik, lalu keduanya dirata-ratakan ke rentang 0..10.
 
+Skor itu lalu dikoreksi probabilitas presipitasi hari kunjungan lewat persamaan
+(2.2). Besarnya koreksi bergantung sifat lokasi: indoor tidak terpengaruh,
+campuran separuh, outdoor penuh. Koreksinya dikendalikan saklar `cuaca_aktif`
+yang bawaannya 0, yaitu mati.
+
 ```
 python optimizer_wisata/dataset.py
 ```

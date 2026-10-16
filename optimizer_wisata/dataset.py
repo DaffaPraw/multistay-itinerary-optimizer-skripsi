@@ -10,10 +10,13 @@ Notasi mengikuti proposal:
     tau[i]       durasi kunjungan, menit
     jam[i]       jam buka dan tutup dalam menit sejak tengah malam
     s[i], u[h]   skor destinasi dan skor akomodasi, 0 sampai 10
+    rho[i,d]     probabilitas presipitasi di kota i pada hari d
+    s_bar[i,d]   skor destinasi sesudah dikoreksi cuaca hari d
 """
 import math
 import os
 import re
+from datetime import date, datetime, timedelta
 
 try:
     from openpyxl import load_workbook
@@ -46,6 +49,7 @@ DATA_PATH = _cari_dataset()
 
 SHEET_DESTINASI = "Destinations_90_Clean"
 SHEET_AKOMODASI = "Accommodations_30"
+SHEET_CUACA = "Weather_Features_14d"
 
 # Persamaan (3.3). Acuan jumlah ulasan. Nilainya diambil dari jumlah ulasan
 # terbesar pada dataset, sehingga lokasi terpopuler memperoleh skor popularitas
@@ -95,6 +99,15 @@ def kategori_pengguna(kategori_sumber):
     kelalaian pemetaan kelihatan di ringkasan.
     """
     return PETA_KATEGORI.get(str(kategori_sumber).strip(), str(kategori_sumber).strip())
+
+
+# Persamaan (2.2). Kepekaan cuaca menurut sifat lokasi.
+GAMMA = {"indoor": 0.0, "mixed": 0.5, "campuran": 0.5, "outdoor": 1.0}
+
+# Persamaan (2.2). Saklar koreksi cuaca, 0 berarti mati dan 1 berarti nyala.
+# Merupakan parameter masukan, bukan variabel keputusan, karena optimizer yang
+# bebas memilih akan selalu mematikannya demi memperbaiki nilai objektif.
+CUACA_AKTIF = 0
 
 
 def _teks(nilai):
@@ -168,6 +181,14 @@ def skor_gabungan(mu, pi):
     return 5.0 * (mu + pi)
 
 
+def skor_terkoreksi(skor, gamma, rho, w=CUACA_AKTIF):
+    """Persamaan (2.2). Skor dikoreksi probabilitas presipitasi.
+
+    w adalah saklar; w=0 berarti skor kembali ke nilai dasarnya.
+    """
+    return skor * (1.0 - w * gamma * rho)
+
+
 _POLA_JAM = re.compile(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})")
 
 
@@ -216,6 +237,7 @@ def _muat_lokasi(baris, peran, v_ref=None):
         mu = skor_mutu(rating_terskala(rating, skala))
         pi = skor_popularitas(ulasan, v_ref)
 
+        sifat = _teks(b.get("indoor_outdoor")).lower()
         lokasi[node_id] = {
             "id": node_id,
             "nama": _teks(b.get("name")),
@@ -230,7 +252,8 @@ def _muat_lokasi(baris, peran, v_ref=None):
             "tiket": _angka(b.get("ticket_price_idr"), "ticket_price_idr", node_id, wajib=False),
             "harga_malam": _angka(b.get("price_per_night_idr"), "price_per_night_idr", node_id, wajib=False),
             "durasi": _angka(b.get("visit_duration_min"), "visit_duration_min", node_id, wajib=False),
-            "sifat": _teks(b.get("indoor_outdoor")).lower(),
+            "sifat": sifat,
+            "gamma": GAMMA.get(sifat, 0.5),
             "rating": rating,
             "skala": skala,
             "ulasan": int(ulasan),
@@ -243,7 +266,39 @@ def _muat_lokasi(baris, peran, v_ref=None):
     return lokasi
 
 
-def validasi_dataset(P, H, node):
+def _muat_cuaca(baris):
+    """Cuaca per jam jadi satu probabilitas presipitasi per kota per tanggal.
+
+    Rata-rata diambil pada jam aktivitas saja, bukan 24 jam, karena wisatawan
+    tidak di luar sepanjang malam.
+    """
+    kumpul = {}
+    for b in baris:
+        kota = _teks(b.get("hub_city"))
+        nilai_tanggal = b.get("date")
+        if isinstance(nilai_tanggal, datetime):
+            tanggal = nilai_tanggal.date()
+        elif isinstance(nilai_tanggal, date):
+            tanggal = nilai_tanggal
+        else:
+            teks = _teks(nilai_tanggal)[:10]
+            if not teks:
+                continue
+            try:
+                tanggal = datetime.strptime(teks, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+        jam = b.get("hour")
+        jam = int(jam) if jam is not None and _teks(jam) != "" else 12
+        if not 6 <= jam <= 21:
+            continue
+        prob = _angka(b.get("probability_precipitation"), "probability_precipitation",
+                      kota, wajib=False)
+        kumpul.setdefault((kota, tanggal), []).append(prob / 100.0)
+    return {kunci: sum(nilai) / len(nilai) for kunci, nilai in kumpul.items() if nilai}
+
+
+def validasi_dataset(P, H, node, cuaca, tanggal):
     """Mengumpulkan seluruh masalah lebih dulu, baru melempar sekali."""
     galat = []
     if not P:
@@ -266,13 +321,28 @@ def validasi_dataset(P, H, node):
         if not any(node[h]["kota"] == kota for h in H):
             galat.append(f"Kota {kota} punya destinasi tetapi tidak punya akomodasi kandidat.")
 
+    # rho dibangun dengan indeks langsung sesudah validasi ini. Alternatifnya
+    # memberi nilai bawaan 0.0, tapi 0.0 berarti cerah, jadi data yang bolong
+    # akan tampak seperti cuaca bagus.
+    hilang = sorted({(node[i]["kota"], t) for i in P for t in tanggal
+                     if (node[i]["kota"], t) not in cuaca})
+    if hilang:
+        galat.append(
+            f"Data cuaca tidak ada untuk {len(hilang)} pasangan kota dan tanggal, contoh {hilang[:3]}."
+        )
+
     if galat:
         raise ValueError("Validasi dataset gagal:\n- " + "\n- ".join(galat))
 
 
 def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
-                 v_ref=None):
-    """Himpunan node beserta atribut yang dipakai model."""
+                 tanggal_mulai=None, jumlah_hari=3, v_ref=None,
+                 cuaca_aktif=CUACA_AKTIF):
+    """Himpunan node beserta parameter model.
+
+    Tanggal di luar rentang data cuaca digeser ke awal rentang, dan
+    pergeserannya dicatat di 'catatan' supaya tidak diam-diam.
+    """
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Dataset tidak ditemukan: {data_path}")
 
@@ -280,6 +350,7 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
     try:
         baris_destinasi = _baca_sheet(wb, SHEET_DESTINASI)
         baris_akomodasi = _baca_sheet(wb, SHEET_AKOMODASI)
+        baris_cuaca = _baca_sheet(wb, SHEET_CUACA)
     finally:
         wb.close()
 
@@ -288,6 +359,7 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
 
     destinasi = _muat_lokasi(baris_destinasi, "destinasi", v_ref)
     akomodasi = _muat_lokasi(baris_akomodasi, "akomodasi", v_ref)
+    cuaca = _muat_cuaca(baris_cuaca)
     catatan = []
 
     if kota_dipilih:
@@ -302,7 +374,29 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
     P = sorted(destinasi)
     H = sorted(akomodasi)
 
-    validasi_dataset(P, H, node)
+    tanggal_tersedia = sorted({t for (_, t) in cuaca})
+    if not tanggal_tersedia:
+        raise ValueError("Sheet cuaca tidak memuat satu pun tanggal yang terbaca.")
+    if tanggal_mulai is None:
+        tanggal_mulai = tanggal_tersedia[0]
+    elif isinstance(tanggal_mulai, str):
+        tanggal_mulai = datetime.strptime(tanggal_mulai, "%Y-%m-%d").date()
+
+    tanggal = [tanggal_mulai + timedelta(days=k) for k in range(jumlah_hari)]
+    if any(t not in tanggal_tersedia for t in tanggal):
+        catatan.append(
+            f"Tanggal {tanggal[0]} sampai {tanggal[-1]} di luar rentang data cuaca "
+            f"{tanggal_tersedia[0]} sampai {tanggal_tersedia[-1]}. Digeser ke awal rentang."
+        )
+        tanggal_mulai = tanggal_tersedia[0]
+        tanggal = [tanggal_mulai + timedelta(days=k) for k in range(jumlah_hari)]
+
+    validasi_dataset(P, H, node, cuaca, tanggal)
+
+    rho = {}
+    for i in P:
+        for d, tgl in enumerate(tanggal, start=1):
+            rho[i, d] = cuaca[node[i]["kota"], tgl]
 
     jam = {}
     asumsi_jam = []
@@ -317,21 +411,34 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
             f"dianggap buka sepanjang hari aktivitas."
         )
 
+    s_bar = {
+        (i, d): skor_terkoreksi(node[i]["skor"], node[i]["gamma"], rho[i, d], cuaca_aktif)
+        for i in P
+        for d in range(1, jumlah_hari + 1)
+    }
+
     return {
         "data_path": data_path,
         "P": P,
         "H": H,
         "N": P + H,
         "node": node,
+        "m": jumlah_hari,
+        "D": list(range(1, jumlah_hari + 1)),
+        "tanggal": tanggal,
         "kota": sorted({node[i]["kota"] for i in P}),
         "kategori": sorted({node[i]["kategori"] for i in P}),
         "s": {i: node[i]["skor"] for i in P},
         "u": {h: node[h]["skor"] for h in H},
+        "s_bar": s_bar,
+        "rho": rho,
+        "gamma": {i: node[i]["gamma"] for i in P},
         "f": {i: node[i]["tiket"] for i in P},
         "p": {h: node[h]["harga_malam"] for h in H},
         "tau": {i: node[i]["durasi"] for i in P},
         "jam": jam,
         "v_ref": v_ref,
+        "cuaca_aktif": cuaca_aktif,
         "catatan": catatan,
     }
 
@@ -346,6 +453,7 @@ def cetak_ringkasan(data_path=DATA_PATH):
     print(f"akomodasi         : {len(data['H'])}")
     print(f"kota              : {', '.join(data['kota'])}")
     print(f"kategori          : {len(data['kategori'])}")
+    print(f"hari perjalanan   : {data['m']}  ({data['tanggal'][0]} sampai {data['tanggal'][-1]})")
     print(f"V_ref             : {data['v_ref']:,.0f}")
     print("penggabungan skor : rata-rata mutu dan popularitas, tanpa bobot")
 
@@ -354,6 +462,12 @@ def cetak_ringkasan(data_path=DATA_PATH):
           f"rata {sum(s.values()) / len(s):.2f}")
     print(f"skor akomodasi    : min {min(u.values()):.2f}  maks {max(u.values()):.2f}  "
           f"rata {sum(u.values()) / len(u):.2f}")
+
+    rho = data["rho"]
+    print(f"saklar cuaca w    : {data['cuaca_aktif']}")
+    print(f"presipitasi rata  : {sum(rho.values()) / len(rho):.3f}  maks {max(rho.values()):.3f}")
+    s_bar = data["s_bar"]
+    print(f"skor terkoreksi   : rata {sum(s_bar.values()) / len(s_bar):.2f}  (w={data['cuaca_aktif']})")
 
     f, p, tau = data["f"], data["p"], data["tau"]
     print(f"tiket masuk       : Rp{min(f.values()):,.0f} sampai Rp{max(f.values()):,.0f}")
