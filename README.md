@@ -22,6 +22,7 @@ pemuat datanya; penyelesainya masih di `optimizer/`.
 | Berkas | Isi |
 |---|---|
 | `optimizer_wisata/dataset.py` | pemuat node wisata dari `data/*.xlsx` |
+| `optimizer_wisata/model.py` | representasi solusi dan fungsi objektif (2.1) |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
 akomodasi di Semarang dan Surakarta. Tiap node membawa kota, kategori,
@@ -39,6 +40,12 @@ yang bawaannya 0, yaitu mati.
 Jarak, waktu tempuh, dan biaya bahan bakar antar node disusun `bangun_matriks`.
 Jaraknya masih ditaksir dari koordinat, yaitu haversine dikali 1,3, dan masih
 perlu diganti hasil layanan rute sebelum percobaan akhir.
+
+Objektifnya empat suku: kerugian mutu destinasi, kerugian mutu akomodasi, biaya
+akomodasi, dan biaya transportasi. Dua suku pertama bersatuan poin skor dan dua
+terakhir rupiah, jadi keempatnya dinormalkan min-max dulu sebelum dijumlahkan
+dengan bobot lambda. Tanpa normalisasi suku rupiah akan mendominasi dan bobot
+yang tertulis tidak benar-benar berlaku.
 
 ```
 python optimizer_wisata/dataset.py
