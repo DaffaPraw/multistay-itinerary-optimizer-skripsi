@@ -9,7 +9,9 @@ Notasi mengikuti proposal:
     f[i], p[h]   harga tiket masuk dan harga kamar per malam
     tau[i]       durasi kunjungan, menit
     jam[i]       jam buka dan tutup dalam menit sejak tengah malam
+    s[i], u[h]   skor destinasi dan skor akomodasi, 0 sampai 10
 """
+import math
 import os
 import re
 
@@ -45,6 +47,15 @@ DATA_PATH = _cari_dataset()
 SHEET_DESTINASI = "Destinations_90_Clean"
 SHEET_AKOMODASI = "Accommodations_30"
 
+# Persamaan (3.3). Acuan jumlah ulasan. Nilainya diambil dari jumlah ulasan
+# terbesar pada dataset, sehingga lokasi terpopuler memperoleh skor popularitas
+# tepat satu dan tidak ada nilai yang perlu dipotong. Konstanta di bawah hanya
+# dipakai sebagai cadangan apabila acuan tidak dapat dihitung dari data.
+V_REF = 70_000
+
+# Persamaan (3.4) dan (3.5) tidak memakai bobot. Skor mutu dan skor popularitas
+# digabungkan sebagai rata-rata biasa, sehingga tidak ada nilai yang perlu
+# ditetapkan sendiri.
 
 # Tabel 2.4. Pengelompokan kategori rinci dari sumber data menjadi lima kategori
 # tingkat pengguna. Sumber data mencatat kategori sangat rinci sehingga sebagian
@@ -119,6 +130,44 @@ def _baca_sheet(wb, nama):
     return hasil
 
 
+# -- Persamaan (3.1)-(3.5) --
+def rating_terskala(rating, skala):
+    """Persamaan (3.1). Rating ke skala lima.
+
+    Sumber memakai skala 5 dan 10 bercampur, jadi perlu diseragamkan dulu.
+    Identitas untuk sumber yang sudah berskala lima.
+    """
+    if skala <= 0:
+        raise ValueError("Skala rating harus positif.")
+    return 5.0 * rating / skala
+
+
+def skor_mutu(rating_skala_lima):
+    """Persamaan (3.2). Rating skala lima menjadi skor mutu 0 sampai 1."""
+    return min(max((rating_skala_lima - 1.0) / 4.0, 0.0), 1.0)
+
+
+def skor_popularitas(jumlah_ulasan, v_ref=None):
+    """Persamaan (3.3). Jumlah ulasan jadi skor popularitas 0..1.
+
+    Logaritma karena sebaran jumlah ulasan sangat lebar. Dipotong di 1 supaya
+    lokasi yang melampaui V_ref tidak keluar rentang.
+    """
+    if jumlah_ulasan < 0:
+        raise ValueError("Jumlah ulasan tidak boleh negatif.")
+    if v_ref is None:
+        v_ref = V_REF
+    return min(math.log(jumlah_ulasan + 1.0) / math.log(v_ref + 1.0), 1.0)
+
+
+def skor_gabungan(mu, pi):
+    """Persamaan (3.4) dan (3.5). Rata-rata mutu dan popularitas, 0..10.
+
+    Sengaja tanpa bobot supaya tidak ada nilai yang perlu dipertanggungjawabkan.
+    """
+    return 5.0 * (mu + pi)
+
+
 _POLA_JAM = re.compile(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})")
 
 
@@ -139,7 +188,19 @@ def parse_jam_operasional(teks, bawaan=(8 * 60, 21 * 60)):
     return buka, tutup, False
 
 
-def _muat_lokasi(baris, peran):
+def _acuan_ulasan(baris):
+    """Jumlah ulasan terbesar di seluruh dataset, dipakai sebagai V acuan (3.3)."""
+    nilai = []
+    for b in baris:
+        if _teks(b.get("usable_for_model")).lower() in ("0", "false", "no"):
+            continue
+        teks = _teks(b.get("review_count"))
+        if teks:
+            nilai.append(float(teks))
+    return max(nilai) if nilai else float(V_REF)
+
+
+def _muat_lokasi(baris, peran, v_ref=None):
     lokasi = {}
     for b in baris:
         node_id = _teks(b.get("location_id"))
@@ -147,6 +208,13 @@ def _muat_lokasi(baris, peran):
             continue
         if _teks(b.get("usable_for_model")).lower() in ("0", "false", "no"):
             continue
+
+        rating = _angka(b.get("rating_value"), "rating_value", node_id)
+        skala = _angka(b.get("rating_scale"), "rating_scale", node_id)
+        ulasan = _angka(b.get("review_count"), "review_count", node_id)
+
+        mu = skor_mutu(rating_terskala(rating, skala))
+        pi = skor_popularitas(ulasan, v_ref)
 
         lokasi[node_id] = {
             "id": node_id,
@@ -163,6 +231,12 @@ def _muat_lokasi(baris, peran):
             "harga_malam": _angka(b.get("price_per_night_idr"), "price_per_night_idr", node_id, wajib=False),
             "durasi": _angka(b.get("visit_duration_min"), "visit_duration_min", node_id, wajib=False),
             "sifat": _teks(b.get("indoor_outdoor")).lower(),
+            "rating": rating,
+            "skala": skala,
+            "ulasan": int(ulasan),
+            "mu": mu,
+            "pi": pi,
+            "skor": skor_gabungan(mu, pi),
             "sumber_resmi": _teks(b.get("official_source_url")),
             "tier_resmi": _teks(b.get("official_source_tier")),
         }
@@ -180,9 +254,13 @@ def validasi_dataset(P, H, node):
     for i in P:
         if node[i]["durasi"] <= 0:
             galat.append(f"Durasi kunjungan kosong atau nol pada destinasi {i}.")
+        if node[i]["skor"] < 0 or node[i]["skor"] > 10:
+            galat.append(f"Skor destinasi {i} di luar rentang 0 sampai 10: {node[i]['skor']:.4f}.")
     for h in H:
         if node[h]["harga_malam"] <= 0:
             galat.append(f"Harga akomodasi {h} kosong atau nol.")
+        if node[h]["skor"] < 0 or node[h]["skor"] > 10:
+            galat.append(f"Skor akomodasi {h} di luar rentang 0 sampai 10: {node[h]['skor']:.4f}.")
 
     for kota in {node[i]["kota"] for i in P}:
         if not any(node[h]["kota"] == kota for h in H):
@@ -192,7 +270,8 @@ def validasi_dataset(P, H, node):
         raise ValueError("Validasi dataset gagal:\n- " + "\n- ".join(galat))
 
 
-def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None):
+def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
+                 v_ref=None):
     """Himpunan node beserta atribut yang dipakai model."""
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Dataset tidak ditemukan: {data_path}")
@@ -204,8 +283,11 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None):
     finally:
         wb.close()
 
-    destinasi = _muat_lokasi(baris_destinasi, "destinasi")
-    akomodasi = _muat_lokasi(baris_akomodasi, "akomodasi")
+    if v_ref is None:
+        v_ref = _acuan_ulasan(baris_destinasi + baris_akomodasi)
+
+    destinasi = _muat_lokasi(baris_destinasi, "destinasi", v_ref)
+    akomodasi = _muat_lokasi(baris_akomodasi, "akomodasi", v_ref)
     catatan = []
 
     if kota_dipilih:
@@ -243,10 +325,13 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None):
         "node": node,
         "kota": sorted({node[i]["kota"] for i in P}),
         "kategori": sorted({node[i]["kategori"] for i in P}),
+        "s": {i: node[i]["skor"] for i in P},
+        "u": {h: node[h]["skor"] for h in H},
         "f": {i: node[i]["tiket"] for i in P},
         "p": {h: node[h]["harga_malam"] for h in H},
         "tau": {i: node[i]["durasi"] for i in P},
         "jam": jam,
+        "v_ref": v_ref,
         "catatan": catatan,
     }
 
@@ -261,6 +346,14 @@ def cetak_ringkasan(data_path=DATA_PATH):
     print(f"akomodasi         : {len(data['H'])}")
     print(f"kota              : {', '.join(data['kota'])}")
     print(f"kategori          : {len(data['kategori'])}")
+    print(f"V_ref             : {data['v_ref']:,.0f}")
+    print("penggabungan skor : rata-rata mutu dan popularitas, tanpa bobot")
+
+    s, u = data["s"], data["u"]
+    print(f"skor destinasi    : min {min(s.values()):.2f}  maks {max(s.values()):.2f}  "
+          f"rata {sum(s.values()) / len(s):.2f}")
+    print(f"skor akomodasi    : min {min(u.values()):.2f}  maks {max(u.values()):.2f}  "
+          f"rata {sum(u.values()) / len(u):.2f}")
 
     f, p, tau = data["f"], data["p"], data["tau"]
     print(f"tiket masuk       : Rp{min(f.values()):,.0f} sampai Rp{max(f.values()):,.0f}")
@@ -271,6 +364,16 @@ def cetak_ringkasan(data_path=DATA_PATH):
     for k in data["kategori"]:
         n = sum(1 for i in data["P"] if node[i]["kategori"] == k)
         print(f"  {k:30} {n:3}")
+
+    print("\nlima destinasi berskor tertinggi")
+    for i in sorted(data["P"], key=lambda k: -s[k])[:5]:
+        print(f"  {i}  {node[i]['nama'][:34]:34}  skor {s[i]:5.2f}  "
+              f"mu {node[i]['mu']:.3f}  pi {node[i]['pi']:.3f}  ulasan {node[i]['ulasan']:,}")
+
+    print("\nlima destinasi berskor terendah")
+    for i in sorted(data["P"], key=lambda k: s[k])[:5]:
+        print(f"  {i}  {node[i]['nama'][:34]:34}  skor {s[i]:5.2f}  "
+              f"mu {node[i]['mu']:.3f}  pi {node[i]['pi']:.3f}  ulasan {node[i]['ulasan']:,}")
 
     if data["catatan"]:
         print("\ncatatan")

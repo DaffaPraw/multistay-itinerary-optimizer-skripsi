@@ -25,7 +25,11 @@ pemuat datanya; penyelesainya masih di `optimizer/`.
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
 akomodasi di Semarang dan Surakarta. Tiap node membawa kota, kategori,
-koordinat, jam operasional, harga, dan durasi kunjungan.
+koordinat, jam operasional, harga, durasi kunjungan, dan skor daya tarik.
+
+Skor disusun dari rating dan jumlah ulasan lewat persamaan (3.1) sampai (3.5):
+rating diseragamkan ke skala lima, dijadikan skor mutu, jumlah ulasan jadi skor
+popularitas secara logaritmik, lalu keduanya dirata-ratakan ke rentang 0..10.
 
 ```
 python optimizer_wisata/dataset.py
