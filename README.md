@@ -22,7 +22,7 @@ pemuat datanya; penyelesainya masih di `optimizer/`.
 | Berkas | Isi |
 |---|---|
 | `optimizer_wisata/dataset.py` | pemuat node wisata dari `data/*.xlsx` |
-| `optimizer_wisata/model.py` | representasi solusi dan fungsi objektif (2.1) |
+| `optimizer_wisata/model.py` | objektif (2.1), penalti batasan, dan fitness (2.20) |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
 akomodasi di Semarang dan Surakarta. Tiap node membawa kota, kategori,
@@ -46,6 +46,12 @@ akomodasi, dan biaya transportasi. Dua suku pertama bersatuan poin skor dan dua
 terakhir rupiah, jadi keempatnya dinormalkan min-max dulu sebelum dijumlahkan
 dengan bobot lambda. Tanpa normalisasi suku rupiah akan mendominasi dan bobot
 yang tertulis tidak benar-benar berlaku.
+
+Batasannya tidak dipasang sebagai pembatas keras, melainkan sebagai penalti
+pada fungsi fitness (2.20): anggaran, jam operasional, kuota waktu harian,
+kunjungan ganda, cakupan kategori, dan cakupan kota. Bobot penaltinya 10, jauh
+di atas rentang Z yang tidak pernah melebihi satu, jadi melanggar batasan
+selalu lebih mahal daripada keuntungan yang bisa diperolehnya.
 
 ```
 python optimizer_wisata/dataset.py

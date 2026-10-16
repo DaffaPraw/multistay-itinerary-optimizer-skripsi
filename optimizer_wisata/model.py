@@ -1,5 +1,5 @@
 """
-Inti model: representasi solusi dan fungsi objektif.
+Inti model: fungsi objektif, penalti, dan pemeriksaan kelayakan.
 
 Dipakai bersama PSO, CWS, dan MILP supaya ketiganya dinilai dengan rumus yang
 sama persis. Kalau tiap metode menghitung objektifnya sendiri, perbedaan hasil
@@ -17,9 +17,13 @@ Representasi solusi:
 
 Persamaan yang diterapkan di berkas ini:
     (2.1), (2.1a) sampai (2.1h)  fungsi objektif ternormalkan min-max
+    (2.7a)                       cakupan kategori
     (2.11), (2.11a)              malam tempat rute harian berakhir
-
-Penalti batasan dan fungsi fitness belum ada di sini.
+    (2.15)                       jam operasional
+    (2.16)                       kuota waktu harian
+    (2.17)                       batasan anggaran
+    (2.18a), (2.18b)             penguncian dan penolakan destinasi
+    (2.20)                       fungsi fitness
 """
 import dataset
 
@@ -40,6 +44,19 @@ NAMA_PROFIL = {
     "hemat": "Hemat",
     "seimbang": "Seimbang",
     "maksimal": "Maksimal Pengalaman",
+}
+
+# Persamaan (2.20). Bobot penalti lambda 5 sampai lambda 10.
+# Nilainya sengaja jauh lebih besar daripada rentang Z, yang tidak pernah melebihi
+# satu karena keempat komponennya ternormalkan. Dengan begitu keuntungan terbesar
+# yang bisa diperoleh dari melanggar suatu batasan selalu lebih kecil daripada penaltinya.
+BOBOT_PENALTI = {
+    "lambda5": 10.0,    # pelampauan anggaran
+    "lambda6": 10.0,    # pelanggaran jam operasional
+    "lambda7": 10.0,    # pelampauan kuota waktu harian
+    "lambda8": 10.0,    # kunjungan ganda
+    "lambda9": 10.0,    # kategori belum terwakili
+    "lambda10": 10.0,   # kota belum terwakili
 }
 
 TOLERANSI = 1e-9
@@ -222,6 +239,174 @@ def nilai_objektif(data, solusi, anggaran, bobot):
     return k
 
 
+# -- penalti (2.20) --
+def hitung_penalti(data, solusi, anggaran, minimum_kategori=None, kategori_wajib=None):
+    """Menghitung keenam jenis pelanggaran pada Persamaan (2.20)."""
+    P, D = data["P"], data["D"]
+    node, f, tau = data["node"], data["f"], data["tau"]
+    pilih, rute = solusi["pilih"], solusi["rute"]
+    terpilih = [i for i in P if pilih.get(i)]
+
+    pesan = []
+
+    # biaya total, Persamaan (2.17): tiket, akomodasi, bahan bakar
+    k = komponen_objektif(data, solusi)
+    biaya_tiket = sum(f[i] for i in terpilih)
+    biaya_total = biaya_tiket + k["biaya_hotel"] + k["biaya_transport"]
+    lebih_anggaran = max(0.0, biaya_total - anggaran)
+    if lebih_anggaran > TOLERANSI:
+        pesan.append(f"Anggaran terlampaui sebesar Rp{lebih_anggaran:,.0f}.")
+
+    # jam operasional dan kuota waktu harian, Persamaan (2.15) dan (2.16)
+    langgar_jam = 0
+    langgar_kuota = 0
+    for d in D:
+        urutan = rute.get(d) or []
+        if len(urutan) < 2:
+            continue
+        _, selesai, jam_langgar = jadwal_hari(data, urutan, d)
+        langgar_jam += jam_langgar
+        pakai = selesai - T_MULAI
+        if pakai > BETA + TOLERANSI:
+            langgar_kuota += 1
+            pesan.append(f"Hari {d} memakai {pakai:.0f} menit, melebihi kuota {BETA:.0f} menit.")
+        if selesai > T_SELESAI + TOLERANSI:
+            langgar_kuota += 1
+            pesan.append(f"Hari {d} selesai pukul {selesai / 60:.2f}, melewati jam selesai aktivitas.")
+    if langgar_jam:
+        pesan.append(f"{langgar_jam} kunjungan berada di luar jam operasional destinasi.")
+
+    # kunjungan ganda: satu destinasi muncul lebih dari sekali di seluruh rute
+    muncul = {}
+    for d in D:
+        for n in (rute.get(d) or []):
+            if n in tau:
+                muncul[n] = muncul.get(n, 0) + 1
+    langgar_ganda = sum(c - 1 for c in muncul.values() if c > 1)
+    if langgar_ganda:
+        pesan.append(f"{langgar_ganda} destinasi dikunjungi lebih dari satu kali.")
+
+    # cakupan kategori, Persamaan (2.7a)
+    langgar_kategori = 0
+    if kategori_wajib:
+        minimum_kategori = minimum_kategori or {}
+        for kat in kategori_wajib:
+            butuh = minimum_kategori.get(kat, 1)
+            ada = sum(1 for i in terpilih if node[i]["kategori"] == kat)
+            if ada < butuh:
+                langgar_kategori += butuh - ada
+                pesan.append(f"Kategori {kat} baru terwakili {ada} dari {butuh}.")
+
+    # Cakupan kota. Yang dihitung hanya destinasi; akomodasi tidak membuat sebuah
+    # kota dianggap terkunjungi, karena menginap bukan berwisata.
+    langgar_kota = 0
+    for kota in data["kota"]:
+        if not any(node[i]["kota"] == kota for i in terpilih):
+            langgar_kota += 1
+            pesan.append(f"Kota {kota} tidak terwakili satu destinasi pun.")
+
+    return {
+        "biaya_tiket": biaya_tiket,
+        "biaya_total": biaya_total,
+        "lebih_anggaran": lebih_anggaran,
+        "N_operasional": langgar_jam,
+        "N_waktu": langgar_kuota,
+        "N_ganda": langgar_ganda,
+        "N_kategori": langgar_kategori,
+        "N_kota": langgar_kota,
+        "pesan": pesan,
+    }
+
+
+def fitness(data, solusi, anggaran, bobot, minimum_kategori=None, kategori_wajib=None,
+            bobot_penalti=None):
+    """Persamaan (2.20). Nilai objektif ditambah seluruh penalti.
+
+    Penting: pelampauan anggaran dibagi anggaran dulu. Tanpa itu sukunya bersatuan
+    rupiah sementara Z tidak bersatuan, jadi tidak bisa dijumlahkan bermakna.
+    """
+    bp = bobot_penalti or BOBOT_PENALTI
+    k = nilai_objektif(data, solusi, anggaran, bobot)
+    pen = hitung_penalti(data, solusi, anggaran, minimum_kategori, kategori_wajib)
+
+    F = (
+        k["Z"]
+        + bp["lambda5"] * (pen["lebih_anggaran"] / anggaran if anggaran > 0 else 0.0)
+        + bp["lambda6"] * pen["N_operasional"]
+        + bp["lambda7"] * pen["N_waktu"]
+        + bp["lambda8"] * pen["N_ganda"]
+        + bp["lambda9"] * pen["N_kategori"]
+        + bp["lambda10"] * pen["N_kota"]
+    )
+
+    hasil = {**k, **pen, "F": F}
+    hasil["layak"] = (
+        pen["lebih_anggaran"] <= TOLERANSI
+        and pen["N_operasional"] == 0
+        and pen["N_waktu"] == 0
+        and pen["N_ganda"] == 0
+        and pen["N_kategori"] == 0
+        and pen["N_kota"] == 0
+    )
+    return hasil
+
+
+# -- validasi solusi --
+def validasi_solusi(data, solusi, kunci=None, tolak=None):
+    """Konsistensi struktur solusi, terpisah dari penilaian mutunya.
+
+    Penalti menilai seberapa baik; ini memeriksa apakah bentuknya masuk akal
+    sebagai itinerary, misalnya rute hari d berawal dan berakhir di akomodasi
+    yang benar.
+    """
+    galat = []
+    P, D, m = data["P"], data["D"], data["m"]
+    pilih, hari, hotel, rute = solusi["pilih"], solusi["hari"], solusi["hotel"], solusi["rute"]
+
+    for d in D:
+        if hotel.get(d) is None:
+            galat.append(f"Malam {d} tidak punya akomodasi.")
+        elif hotel[d] not in data["H"]:
+            galat.append(f"Akomodasi malam {d} bukan kandidat yang sah: {hotel[d]}.")
+
+    for d in D:
+        urutan = rute.get(d)
+        if not urutan:
+            galat.append(f"Hari {d} tidak punya rute.")
+            continue
+        if urutan[0] != hotel.get(d):
+            galat.append(f"Hari {d} tidak berawal dari akomodasi malam {d}.")
+        akhir = malam_akhir(d, m)
+        if urutan[-1] != hotel.get(akhir):
+            galat.append(f"Hari {d} tidak berakhir pada akomodasi malam {akhir}.")
+
+    terpilih = {i for i in P if pilih.get(i)}
+    di_rute = {n for d in D for n in (rute.get(d) or []) if n in data["tau"]}
+    if terpilih != di_rute:
+        hanya_pilih = sorted(terpilih - di_rute)
+        hanya_rute = sorted(di_rute - terpilih)
+        if hanya_pilih:
+            galat.append(f"Destinasi dipilih tetapi tidak ada di rute: {hanya_pilih}.")
+        if hanya_rute:
+            galat.append(f"Destinasi ada di rute tetapi tidak ditandai dipilih: {hanya_rute}.")
+
+    for i in terpilih:
+        if i not in hari:
+            galat.append(f"Destinasi {i} dipilih tetapi tidak punya hari kunjungan.")
+        elif rute.get(hari[i]) is None or i not in rute[hari[i]]:
+            galat.append(f"Destinasi {i} ditandai hari {hari[i]} tetapi tidak ada di rute hari itu.")
+
+    # Persamaan (2.18a) dan (2.18b)
+    for i in (kunci or []):
+        if i not in terpilih:
+            galat.append(f"Destinasi terkunci {i} tidak masuk itinerary.")
+    for i in (tolak or []):
+        if i in terpilih:
+            galat.append(f"Destinasi yang ditolak {i} masih masuk itinerary.")
+
+    return not galat, galat
+
+
 def solusi_kosong(data):
     return {
         "pilih": {i: 0 for i in data["P"]},
@@ -230,3 +415,48 @@ def solusi_kosong(data):
         "rute": {d: [] for d in data["D"]},
         "tiba": {},
     }
+
+
+def _jam(menit):
+    """Menit sejak tengah malam jadi teks jam.
+
+    Dibulatkan dulu; tanpa itu 1079,6 tercetak sebagai 17:60, bukan 18:00.
+    """
+    total = int(round(menit))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def cetak_itinerary(data, solusi, hasil, judul="Itinerary"):
+    node, tau = data["node"], data["tau"]
+    print(judul)
+    print("=" * 78)
+    for d in data["D"]:
+        urutan = solusi["rute"].get(d) or []
+        tanggal = data["tanggal"][d - 1]
+        print(f"\nHari {d}  ({tanggal})")
+        if len(urutan) < 2:
+            print("  tidak ada kunjungan")
+            continue
+        tiba, selesai, _ = jadwal_hari(data, urutan, d)
+        for n in urutan:
+            if n in tau:
+                print(f"    {_jam(tiba[n, d])}  {node[n]['nama'][:38]:38} "
+                      f"{tau[n]:4.0f} mnt  skor {data['s_bar'][n, d]:5.2f}  Rp{data['f'][n]:>9,.0f}")
+            else:
+                print(f"           [{node[n]['nama'][:38]:38}]  akomodasi")
+        print(f"    selesai {_jam(selesai)}, "
+              f"pemakaian {selesai - T_MULAI:.0f} dari {BETA:.0f} menit")
+
+    print("\nringkasan")
+    print(f"  destinasi terpilih : {sum(solusi['pilih'].values())} dari {len(data['P'])}")
+    print(f"  Z                  : {hasil['Z']:.6f}")
+    print(f"  L_P, L_H           : {hasil['L_P']:.4f}, {hasil['L_H']:.4f}")
+    print(f"  C_H, C_T           : {hasil['C_H']:.4f}, {hasil['C_T']:.4f}")
+    print(f"  biaya tiket        : Rp{hasil['biaya_tiket']:,.0f}")
+    print(f"  biaya akomodasi    : Rp{hasil['biaya_hotel']:,.0f}")
+    print(f"  biaya transportasi : Rp{hasil['biaya_transport']:,.0f}")
+    print(f"  biaya total        : Rp{hasil['biaya_total']:,.0f}")
+    print(f"  fitness F          : {hasil['F']:.6f}")
+    print(f"  layak              : {'YA' if hasil['layak'] else 'TIDAK'}")
+    for p in hasil["pesan"]:
+        print(f"    - {p}")
