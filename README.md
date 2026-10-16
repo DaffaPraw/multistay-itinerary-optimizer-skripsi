@@ -36,6 +36,10 @@ Skor itu lalu dikoreksi probabilitas presipitasi hari kunjungan lewat persamaan
 campuran separuh, outdoor penuh. Koreksinya dikendalikan saklar `cuaca_aktif`
 yang bawaannya 0, yaitu mati.
 
+Jarak, waktu tempuh, dan biaya bahan bakar antar node disusun `bangun_matriks`.
+Jaraknya masih ditaksir dari koordinat, yaitu haversine dikali 1,3, dan masih
+perlu diganti hasil layanan rute sebelum percobaan akhir.
+
 ```
 python optimizer_wisata/dataset.py
 ```

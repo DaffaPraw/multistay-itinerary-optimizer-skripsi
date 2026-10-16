@@ -12,6 +12,7 @@ Notasi mengikuti proposal:
     s[i], u[h]   skor destinasi dan skor akomodasi, 0 sampai 10
     rho[i,d]     probabilitas presipitasi di kota i pada hari d
     s_bar[i,d]   skor destinasi sesudah dikoreksi cuaca hari d
+    delta, t, g  jarak (km), waktu tempuh (menit), biaya bahan bakar antar node
 """
 import math
 import os
@@ -109,6 +110,19 @@ GAMMA = {"indoor": 0.0, "mixed": 0.5, "campuran": 0.5, "outdoor": 1.0}
 # bebas memilih akan selalu mematikannya demi memperbaiki nilai objektif.
 CUACA_AKTIF = 0
 
+# Biaya bahan bakar, Tabel 2.9.
+KBBM = 12.0       # kilometer per liter
+HBBM = 10_000.0   # rupiah per liter
+
+# Jarak masih ditaksir dari koordinat. FAKTOR_JALAN mengubah jarak garis lurus
+# jadi perkiraan jarak jalan, dan kecepatannya dibedakan karena perjalanan
+# dalam kota jauh lebih lambat daripada antar kota.
+FAKTOR_JALAN = 1.3
+KECEPATAN_KOTA_KMJAM = 25.0     # dalam satu kota
+KECEPATAN_ANTARKOTA_KMJAM = 55.0
+
+RADIUS_BUMI_KM = 6371.0
+
 
 def _teks(nilai):
     return "" if nilai is None else str(nilai).strip()
@@ -124,6 +138,14 @@ def _angka(nilai, nama_field, node_id, wajib=True, bawaan=0.0):
         return float(teks)
     except ValueError as exc:
         raise ValueError(f"{nama_field} bukan angka pada node {node_id}: {nilai!r}") from exc
+
+
+def _haversine_km(a, b):
+    lat1, lon1 = math.radians(a[0]), math.radians(a[1])
+    lat2, lon2 = math.radians(b[0]), math.radians(b[1])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * RADIUS_BUMI_KM * math.asin(math.sqrt(h))
 
 
 def _baca_sheet(wb, nama):
@@ -298,6 +320,56 @@ def _muat_cuaca(baris):
     return {kunci: sum(nilai) / len(nilai) for kunci, nilai in kumpul.items() if nilai}
 
 
+def _kecepatan(kota_u, kota_v):
+    return KECEPATAN_KOTA_KMJAM if kota_u == kota_v else KECEPATAN_ANTARKOTA_KMJAM
+
+
+def bangun_matriks(node, lapor=False):
+    """Menyusun delta, t, dan g untuk seluruh pasangan node.
+
+    Jarak ditaksir dari koordinat memakai haversine dikali FAKTOR_JALAN, bukan
+    diambil dari sheet Route_Matrix pada dataset, karena matriks di sheet itu
+    sendiri masih taksiran dan belum memuat seluruh node. Nilainya perlu diganti
+    hasil layanan rute sebelum percobaan akhir.
+
+    Taksiran ini simetris, jadi hanya pasangan dengan u lebih kecil daripada v
+    yang dihitung lalu dicerminkan. Untuk 120 node perhitungan haversine turun
+    dari 14.280 jadi 7.140. Waktu tempuh ikut simetris karena hanya bergantung
+    jarak dan kelas kecepatan antar kota.
+
+    Pasangannya terbagi tiga blok: antar destinasi, antar akomodasi, dan
+    destinasi dengan akomodasi. Ketiganya dipakai model, karena rute harian
+    berangkat dari akomodasi, melewati destinasi, lalu berakhir di akomodasi,
+    dan hari tanpa kunjungan menghasilkan arc dari akomodasi ke akomodasi.
+    """
+    ids = list(node.keys())
+    delta, t, g = {}, {}, {}
+    hitung = 0
+
+    for u in ids:
+        delta[u, u] = t[u, u] = g[u, u] = 0.0
+
+    for a in range(len(ids)):
+        for b in range(a + 1, len(ids)):
+            u, v = ids[a], ids[b]
+            km = _haversine_km((node[u]["lat"], node[u]["lon"]),
+                               (node[v]["lat"], node[v]["lon"])) * FAKTOR_JALAN
+            menit = 60.0 * km / _kecepatan(node[u]["kota"], node[v]["kota"])
+            rupiah = km / KBBM * HBBM
+            hitung += 1
+            # dicerminkan, bukan dihitung ulang
+            delta[u, v] = delta[v, u] = km
+            t[u, v] = t[v, u] = menit
+            g[u, v] = g[v, u] = rupiah
+
+    if lapor:
+        n = len(ids)
+        print(f"  matriks rute: {n} node, {hitung:,} perhitungan haversine "
+              f"untuk {n * (n - 1):,} pasangan berarah "
+              f"({1 - hitung / (n * (n - 1)):.0%} dihemat lewat simetri)")
+    return delta, t, g
+
+
 def validasi_dataset(P, H, node, cuaca, tanggal):
     """Mengumpulkan seluruh masalah lebih dulu, baru melempar sekali."""
     galat = []
@@ -411,6 +483,8 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
             f"dianggap buka sepanjang hari aktivitas."
         )
 
+    delta, t_mat, g = bangun_matriks(node)
+
     s_bar = {
         (i, d): skor_terkoreksi(node[i]["skor"], node[i]["gamma"], rho[i, d], cuaca_aktif)
         for i in P
@@ -437,6 +511,9 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
         "p": {h: node[h]["harga_malam"] for h in H},
         "tau": {i: node[i]["durasi"] for i in P},
         "jam": jam,
+        "delta": delta,
+        "t": t_mat,
+        "g": g,
         "v_ref": v_ref,
         "cuaca_aktif": cuaca_aktif,
         "catatan": catatan,
@@ -468,6 +545,19 @@ def cetak_ringkasan(data_path=DATA_PATH):
     print(f"presipitasi rata  : {sum(rho.values()) / len(rho):.3f}  maks {max(rho.values()):.3f}")
     s_bar = data["s_bar"]
     print(f"skor terkoreksi   : rata {sum(s_bar.values()) / len(s_bar):.2f}  (w={data['cuaca_aktif']})")
+    print(f"faktor jalan      : {FAKTOR_JALAN} kali jarak haversine")
+    delta = data["delta"]
+    dalam = [v for (u, w), v in delta.items()
+             if u != w and node[u]["kota"] == node[w]["kota"]]
+    antar = [v for (u, w), v in delta.items()
+             if u != w and node[u]["kota"] != node[w]["kota"]]
+    print(f"jarak dalam kota  : rata {sum(dalam) / len(dalam):5.1f} km  "
+          f"maks {max(dalam):5.1f} km  ({len(dalam):,} pasangan)")
+    print(f"jarak antar kota  : rata {sum(antar) / len(antar):5.1f} km  "
+          f"maks {max(antar):5.1f} km  ({len(antar):,} pasangan)")
+    g = data["g"]
+    print(f"biaya bahan bakar : rata Rp{sum(g.values()) / len(g):,.0f} per arc  "
+          f"maks Rp{max(g.values()):,.0f}")
 
     f, p, tau = data["f"], data["p"], data["tau"]
     print(f"tiket masuk       : Rp{min(f.values()):,.0f} sampai Rp{max(f.values()):,.0f}")
