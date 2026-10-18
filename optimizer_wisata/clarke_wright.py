@@ -18,10 +18,6 @@ Sepuluh langkah:
      9. Mengulangi langkah delapan sampai seluruh pasangan selesai diproses.
     10. Menghitung nilai objektif dan memvalidasi kelayakan solusi akhir.
 
-Yang sudah ada di berkas ini: langkah 1 sampai 5, langkah 3, dan langkah 10.
-Rutenya masih disusun tetangga terdekat, belum memakai aturan penghematan.
-Langkah 6 sampai 9 belum ada.
-
 Kompromi di langkah 2: skor terkoreksi cuaca butuh hari kunjungan, padahal hari
 baru ditetapkan di langkah 4. Jadi langkah 2 memakai rata-rata presipitasi
 sepanjang perjalanan sebagai pendekatan. Setelah hari ditetapkan skornya dihitung
@@ -48,6 +44,12 @@ def skor_praalokasi(data):
         rho_rata = sum(nilai) / len(nilai) if nilai else 0.0
         hasil[i] = DS.skor_terkoreksi(data["s"][i], data["gamma"][i], rho_rata)
     return hasil
+
+
+def penghematan(data, awal, i, j):
+    """Persamaan (2.19). Penghematan waktu bila i dan j digabung dalam satu rute."""
+    t = data["t"]
+    return t[awal, i] + t[j, awal] - t[i, j]
 
 
 def _muat(data, urutan, d):
@@ -115,10 +117,56 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
         tersedia = [i for i in urut
                     if node[i]["kota"] == kota_hari[d] and not solusi["pilih"][i]]
 
-        # langkah 5: rute disusun tetangga terdekat, destinasi ditambah satu per
-        # satu menurut peringkat selama kuota hari masih cukup
-        terbaik, isi_terbaik = [awal, akhir], []
+        # langkah 5: satu rute pulang pergi terpisah untuk tiap destinasi
+        milik = {i: idx for idx, i in enumerate(tersedia)}
+        segmen = {idx: [i] for idx, i in enumerate(tersedia)}
+
+        # langkah 6 dan 7: penghematan seluruh pasangan, diurutkan menurun.
+        # Pasangan berarah, bukan kombinasi, karena matriks waktu tempuh tidak
+        # simetris sehingga menggabung i-j tidak sama dengan j-i.
+        pasangan = []
+        for a in range(len(tersedia)):
+            for b in range(len(tersedia)):
+                if a == b:
+                    continue
+                i, j = tersedia[a], tersedia[b]
+                pasangan.append((penghematan(data, awal, i, j), i, j))
+        pasangan.sort(key=lambda x: (-x[0], x[1], x[2]))
+
+        # langkah 8 dan 9: penggabungan selama seluruh batasan masih terpenuhi
+        for nilai, i, j in pasangan:
+            if nilai <= 0:
+                break
+            si, sj = milik.get(i), milik.get(j)
+            if si is None or sj is None or si == sj:
+                continue
+            # hanya ujung yang boleh disambung: i di akhir segmennya, j di awal
+            if segmen[si][-1] != i or segmen[sj][0] != j:
+                continue
+            gabung = segmen[si] + segmen[sj]
+            calon = _rute_nn(data, awal, akhir, gabung)
+            layak, _ = _muat(data, calon, d)
+            if not layak:
+                continue
+            segmen[si] = gabung
+            for n in segmen[sj]:
+                milik[n] = si
+            del segmen[sj]
+
+        # segmen terpanjang yang masih muat dipakai sebagai rute hari ini
+        terbaik, isi_terbaik = None, []
+        for idx, isi in segmen.items():
+            calon = _rute_nn(data, awal, akhir, isi)
+            layak, _ = _muat(data, calon, d)
+            if layak and len(isi) > len(isi_terbaik):
+                terbaik, isi_terbaik = calon, isi
+
+        # sisa kapasitas hari diisi destinasi berperingkat tertinggi yang masih muat
+        if terbaik is None:
+            terbaik, isi_terbaik = [awal, akhir], []
         for i in tersedia:
+            if i in isi_terbaik:
+                continue
             calon = _rute_nn(data, awal, akhir, isi_terbaik + [i])
             layak, _ = _muat(data, calon, d)
             if layak:
