@@ -18,9 +18,11 @@ Representasi solusi:
 Persamaan yang diterapkan di berkas ini:
     (2.1), (2.1a) sampai (2.1h)  fungsi objektif ternormalkan min-max
     (2.7a)                       cakupan kategori
+    (2.7b)                       cakupan kota
     (2.11), (2.11a)              malam tempat rute harian berakhir
-    (2.15)                       jam operasional
-    (2.16)                       kuota waktu harian
+    (2.12)                       kuota waktu aktivitas harian
+    (2.14)                       jam operasional destinasi
+    (2.15)                       aktivitas selesai sebelum jendela harian tutup
     (2.17)                       batasan anggaran
     (2.18a), (2.18b)             penguncian dan penolakan destinasi
     (2.20)                       fungsi fitness
@@ -32,7 +34,10 @@ import dataset
 # tidak bisa berbeda dengan jendela yang dipakai saat menghitung rho.
 T_MULAI = dataset.JAM_MULAI_AKTIVITAS * 60
 T_SELESAI = dataset.JAM_SELESAI_AKTIVITAS * 60
-BETA = 600.0          # kuota waktu aktivitas harian dalam menit
+# Kuota waktu aktivitas harian beta, dalam menit. Tabel 2.9 memperlakukannya
+# sebagai parameter masukan dan tidak menetapkan nilainya, jadi angka di bawah
+# hanya nilai bawaan.
+BETA = 600.0
 
 # Persamaan (2.1). Empat bobot kepentingan, jumlahnya wajib satu.
 # Nilai setiap profil ditetapkan lewat pengujian awal Bab IV.
@@ -259,7 +264,8 @@ def hitung_penalti(data, solusi, anggaran, minimum_kategori=None, kategori_wajib
     if lebih_anggaran > TOLERANSI:
         pesan.append(f"Anggaran terlampaui sebesar Rp{lebih_anggaran:,.0f}.")
 
-    # jam operasional dan kuota waktu harian, Persamaan (2.15) dan (2.16)
+    # jam operasional (2.14), kuota waktu harian (2.12), dan batas tutup
+    # jendela aktivitas (2.15)
     langgar_jam = 0
     langgar_kuota = 0
     for d in D:
@@ -268,6 +274,10 @@ def hitung_penalti(data, solusi, anggaran, minimum_kategori=None, kategori_wajib
             continue
         _, selesai, jam_langgar = jadwal_hari(data, urutan, d)
         langgar_jam += jam_langgar
+        # Pemakaian dihitung dari awal sampai akhir hari, jadi waktu menunggu
+        # jam buka ikut terhitung. Lebih ketat daripada bunyi (2.12) yang hanya
+        # menjumlah durasi kunjungan dan waktu tempuh, tetapi menunggu di depan
+        # gerbang memang memakai hari pengguna.
         pakai = selesai - T_MULAI
         if pakai > BETA + TOLERANSI:
             langgar_kuota += 1
@@ -299,8 +309,9 @@ def hitung_penalti(data, solusi, anggaran, minimum_kategori=None, kategori_wajib
                 langgar_kategori += butuh - ada
                 pesan.append(f"Kategori {kat} baru terwakili {ada} dari {butuh}.")
 
-    # Cakupan kota. Yang dihitung hanya destinasi; akomodasi tidak membuat sebuah
-    # kota dianggap terkunjungi, karena menginap bukan berwisata.
+    # Cakupan kota, Persamaan (2.7b). Yang dihitung hanya destinasi; akomodasi
+    # tidak membuat sebuah kota dianggap terkunjungi, karena menginap bukan
+    # berwisata.
     langgar_kota = 0
     for kota in data["kota"]:
         if not any(node[i]["kota"] == kota for i in terpilih):
