@@ -110,6 +110,12 @@ GAMMA = {"indoor": 0.0, "mixed": 0.5, "campuran": 0.5, "outdoor": 1.0}
 # bebas memilih akan selalu mematikannya demi memperbaiki nilai objektif.
 CUACA_AKTIF = 0
 
+# Jendela aktivitas harian [Ts, Te] pada Tabel 2.9, dalam jam. Ditaruh di sini
+# karena rho juga diambil pada jendela yang sama; model.py mengambil nilainya
+# dari sini supaya keduanya tidak bisa berbeda.
+JAM_MULAI_AKTIVITAS = 8
+JAM_SELESAI_AKTIVITAS = 20
+
 # Biaya bahan bakar, Tabel 2.9.
 KBBM = 12.0       # kilometer per liter
 HBBM = 10_000.0   # rupiah per liter
@@ -312,7 +318,7 @@ def _muat_cuaca(baris):
                 continue
         jam = b.get("hour")
         jam = int(jam) if jam is not None and _teks(jam) != "" else 12
-        if not 6 <= jam <= 21:
+        if not JAM_MULAI_AKTIVITAS <= jam <= JAM_SELESAI_AKTIVITAS:
             continue
         prob = _angka(b.get("probability_precipitation"), "probability_precipitation",
                       kota, wajib=False)
@@ -542,6 +548,7 @@ def cetak_ringkasan(data_path=DATA_PATH):
 
     rho = data["rho"]
     print(f"saklar cuaca w    : {data['cuaca_aktif']}")
+    print(f"jendela aktivitas : jam {JAM_MULAI_AKTIVITAS} sampai {JAM_SELESAI_AKTIVITAS}")
     print(f"presipitasi rata  : {sum(rho.values()) / len(rho):.3f}  maks {max(rho.values()):.3f}")
     s_bar = data["s_bar"]
     print(f"skor terkoreksi   : rata {sum(s_bar.values()) / len(s_bar):.2f}  (w={data['cuaca_aktif']})")

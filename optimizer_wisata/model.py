@@ -28,8 +28,10 @@ Persamaan yang diterapkan di berkas ini:
 import dataset
 
 # -- pengaturan --
-T_MULAI = 8 * 60      # Tabel 2.9, jam mulai aktivitas harian
-T_SELESAI = 20 * 60   # jam selesai aktivitas harian
+# Jendela aktivitas harian [Ts, Te] pada Tabel 2.9, diambil dari dataset supaya
+# tidak bisa berbeda dengan jendela yang dipakai saat menghitung rho.
+T_MULAI = dataset.JAM_MULAI_AKTIVITAS * 60
+T_SELESAI = dataset.JAM_SELESAI_AKTIVITAS * 60
 BETA = 600.0          # kuota waktu aktivitas harian dalam menit
 
 # Persamaan (2.1). Empat bobot kepentingan, jumlahnya wajib satu.
