@@ -25,6 +25,7 @@ kapasitas kendaraan membatasi muatan per rute.
 | `optimizer_wisata/clarke_wright.py` | Clarke-Wright Savings, heuristik pembanding |
 | `optimizer_wisata/pso.py` | Particle Swarm Optimization, metode utama |
 | `optimizer_wisata/milp_gurobi.py` | MILP dengan Gurobi, acuan solusi optimal |
+| `optimizer_wisata/jalankan.py` | penggerak: tiga profil, perbandingan metode, kunci/tolak |
 | `optimizer_wisata/milp_gurobi.py` | MILP Gurobi, acuan solusi optimal pada subset kecil |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30

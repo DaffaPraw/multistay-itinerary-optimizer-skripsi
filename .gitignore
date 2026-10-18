@@ -11,3 +11,6 @@ env/
 .ors_key
 *.key
 ors_key.txt
+
+# keluaran percobaan, dibangkitkan ulang dari kode
+optimizer_wisata/hasil/
