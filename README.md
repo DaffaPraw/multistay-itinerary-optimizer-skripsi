@@ -25,6 +25,7 @@ dipindahkan dari `optimizer/`.
 | `optimizer_wisata/model.py` | objektif (2.1), penalti batasan, dan fitness (2.20) |
 | `optimizer_wisata/clarke_wright.py` | Clarke-Wright Savings, heuristik pembanding |
 | `optimizer_wisata/pso.py` | Particle Swarm Optimization, metode utama |
+| `optimizer_wisata/milp_gurobi.py` | MILP Gurobi, acuan solusi optimal pada subset kecil |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
 akomodasi di Semarang dan Surakarta. Tiap node membawa kota, kategori,
