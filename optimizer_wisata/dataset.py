@@ -297,8 +297,9 @@ def _muat_lokasi(baris, peran, v_ref=None):
 def _muat_cuaca(baris):
     """Cuaca per jam jadi satu probabilitas presipitasi per kota per tanggal.
 
-    Rata-rata diambil pada jam aktivitas saja, bukan 24 jam, karena wisatawan
-    tidak di luar sepanjang malam.
+    Yang diambil nilai terbesar pada jendela aktivitas harian, bukan rata-rata.
+    Rata-rata meredam hujan yang terpusat beberapa jam, padahal hujan tiga jam
+    sudah cukup merusak kunjungan outdoor sehari.
     """
     kumpul = {}
     for b in baris:
@@ -323,7 +324,7 @@ def _muat_cuaca(baris):
         prob = _angka(b.get("probability_precipitation"), "probability_precipitation",
                       kota, wajib=False)
         kumpul.setdefault((kota, tanggal), []).append(prob / 100.0)
-    return {kunci: sum(nilai) / len(nilai) for kunci, nilai in kumpul.items() if nilai}
+    return {kunci: max(nilai) for kunci, nilai in kumpul.items() if nilai}
 
 
 def _kecepatan(kota_u, kota_v):
@@ -549,7 +550,7 @@ def cetak_ringkasan(data_path=DATA_PATH):
     rho = data["rho"]
     print(f"saklar cuaca w    : {data['cuaca_aktif']}")
     print(f"jendela aktivitas : jam {JAM_MULAI_AKTIVITAS} sampai {JAM_SELESAI_AKTIVITAS}")
-    print(f"presipitasi rata  : {sum(rho.values()) / len(rho):.3f}  maks {max(rho.values()):.3f}")
+    print(f"presipitasi       : rata {sum(rho.values()) / len(rho):.3f}  maks {max(rho.values()):.3f}  (maksimum per hari)")
     s_bar = data["s_bar"]
     print(f"skor terkoreksi   : rata {sum(s_bar.values()) / len(s_bar):.2f}  (w={data['cuaca_aktif']})")
     print(f"faktor jalan      : {FAKTOR_JALAN} kali jarak haversine")
