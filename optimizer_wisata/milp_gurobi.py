@@ -271,6 +271,17 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
                   minimum_kategori=None, kategori_wajib=None,
                   maks_destinasi=MAKS_DESTINASI, maks_hotel=MAKS_HOTEL,
                   batas_waktu=BATAS_WAKTU_DETIK, cetak=False):
+    """Menjalankan MILP pada subset kecil dan mengembalikan solusi beserta gap.
+
+    Dataset disempitkan ke subset lebih dulu supaya penilaian memakai
+    himpunan kandidat yang persis sama dengan yang dilihat model. Tanpa itu
+    batas normalisasi dihitung dari 90 destinasi sementara modelnya hanya
+    melihat belasan, dan nilai objektifnya tidak sebanding.
+
+    Optimality gap (2.23) hanya sah dibaca bila statusnya OPTIMAL. Pada
+    status BATAS WAKTU, gap-nya menyatakan jarak ke batas bawah yang belum
+    terbukti, bukan ke optimum.
+    """
     mulai = time.perf_counter()
     P, H = ambil_subset(data, maks_destinasi, maks_hotel)
 

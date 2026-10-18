@@ -53,11 +53,23 @@ def penghematan(data, awal, i, j):
 
 
 def _muat(data, urutan, d):
+    """Apakah rute hari d masih layak, beserta waktu selesainya.
+
+    Tiga hal diperiksa sekaligus: kuota waktu harian (2.12), batas tutup
+    jendela aktivitas (2.15), dan jam operasional destinasi (2.14).
+    Dipakai sebagai syarat setiap kali penggabungan dicoba.
+    """
     _, selesai, langgar = M.jadwal_hari(data, urutan, d)
     return (selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and langgar == 0), selesai
 
 
 def _rute_nn(data, awal, akhir, isi):
+    """Mengurutkan isi hari dengan tetangga terdekat, dari awal menuju akhir.
+
+    Awal dan akhir adalah akomodasi dan posisinya tetap. Dipakai untuk
+    menilai calon penggabungan pada langkah 8 dan untuk menyusun rute
+    akhir hari itu.
+    """
     t = data["t"]
     belum = list(isi)
     urutan = [awal]
@@ -73,6 +85,16 @@ def _rute_nn(data, awal, akhir, isi):
 
 def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
                  minimum_kategori=None, kategori_wajib=None, cetak=False):
+    """Menjalankan Clarke-Wright Savings, sepuluh langkah subbab 2.5.
+
+    Urutan pengerjaannya tidak sama dengan urutan nomor langkahnya.
+    Langkah 3, pemenuhan cakupan kategori, dikerjakan paling akhir karena
+    penyisipan destinasi baru perlu tahu kuota waktu mana yang masih
+    tersisa, dan itu baru diketahui setelah hari ditetapkan di langkah 4.
+
+    Mengembalikan dict berisi solusi, hasil penilaian, nilai fitness,
+    runtime, dan status validasi struktur.
+    """
     mulai = time.perf_counter()
     kunci = set(kunci or [])
     tolak = set(tolak or [])
@@ -211,6 +233,13 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
 
 
 def _sisip_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
+    """Langkah 3. Memenuhi cakupan kategori (2.7a) setelah hari ditetapkan.
+
+    Untuk setiap kategori yang belum memenuhi jumlah minimum, destinasi
+    berskor tertinggi dari kategori itu dicoba disisipkan ke hari yang
+    kotanya cocok. Kalau tidak ada hari yang masih muat, penyisipan
+    dihentikan dan penalti pada fitness yang akan menandainya.
+    """
     if not kategori_wajib:
         return
     node = data["node"]
@@ -245,6 +274,13 @@ def _sisip_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
 
 
 def _buang_sampai_anggaran(data, solusi, anggaran):
+    """Membuang destinasi paling tidak efisien sampai biaya masuk anggaran (2.17).
+
+    Yang dibuang lebih dulu adalah destinasi dengan rasio skor terhadap
+    harga tiket terkecil, yaitu yang paling sedikit memberi mutu per rupiah.
+
+    Hanya menyentuh destinasi, tidak pernah meninjau ulang pilihan hotel.
+    """
     f, s_bar = data["f"], data["s_bar"]
     for _ in range(len(data["P"])):
         pen = M.hitung_penalti(data, solusi, anggaran)

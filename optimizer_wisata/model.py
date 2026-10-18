@@ -421,6 +421,11 @@ def validasi_solusi(data, solusi, kunci=None, tolak=None):
 
 
 def solusi_kosong(data):
+    """Solusi kosong yang bentuknya sudah benar.
+
+    Belum memilih destinasi maupun akomodasi, jadi tidak layak. Dipakai
+    sebagai titik awal yang diisi bertahap oleh setiap metode.
+    """
     return {
         "pilih": {i: 0 for i in data["P"]},
         "hari": {},
@@ -440,6 +445,13 @@ def _jam(menit):
 
 
 def cetak_itinerary(data, solusi, hasil, judul="Itinerary"):
+    """Mencetak itinerary per hari beserta ringkasan biaya dan kelayakannya.
+
+    Tiap destinasi ditampilkan dengan waktu tiba, durasi, skor terkoreksi
+    cuaca, dan harga tiket; akomodasi ditandai terpisah. Ringkasannya memuat
+    keempat suku objektif, rincian biaya, nilai fitness, dan daftar batasan
+    yang dilanggar bila ada.
+    """
     node, tau = data["node"], data["tau"]
     print(judul)
     print("=" * 78)

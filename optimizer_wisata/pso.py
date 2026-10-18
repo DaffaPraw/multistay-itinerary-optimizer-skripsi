@@ -51,6 +51,12 @@ def _kunci_awal(data, rng):
 
 
 def inisialisasi_partikel(data, jumlah, seed):
+    """Membangkitkan kawanan awal: posisi dan kecepatan acak tiap partikel.
+
+    Seed diteruskan ke satu objek Random supaya seluruh pembangkitan dapat
+    diulang. Personal best mula-mula diisi posisi awal dengan fitness tak
+    hingga, sehingga penilaian pertama pasti memperbaikinya.
+    """
     rng = random.Random(seed)
     partikel = []
     for _ in range(jumlah):
@@ -213,6 +219,11 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
 
 
 def _susun_ulang_hari(data, solusi, d):
+    """Menyusun ulang rute hari d dari isi yang sekarang, ujungnya dipertahankan.
+
+    Dipakai sesudah perbaikan membuang destinasi, karena rute yang tinggal
+    sebagian urutannya belum tentu masih yang terbaik.
+    """
     urutan = solusi["rute"].get(d) or []
     if len(urutan) < 2:
         return
@@ -402,6 +413,8 @@ def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
 
 
 def cetak_hasil(data, keluaran):
+    """Mencetak itinerary hasil PSO beserta jumlah iterasi, seed, dan runtime.
+    """
     M.cetak_itinerary(data, keluaran["solusi"], keluaran["hasil"],
                       judul=f"Itinerary hasil {keluaran['metode']}")
     print(f"  iterasi terpakai   : {keluaran['iterasi_terpakai']}")

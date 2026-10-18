@@ -135,6 +135,11 @@ def _teks(nilai):
 
 
 def _angka(nilai, nama_field, node_id, wajib=True, bawaan=0.0):
+    """Mengubah sel menjadi float, dengan pesan galat yang menyebut node dan kolomnya.
+
+    Sel kosong pada kolom wajib dianggap galat, bukan nol, supaya data yang
+    bolong tidak diam-diam terbaca sebagai angka yang bermakna.
+    """
     teks = _teks(nilai)
     if teks == "":
         if wajib:
@@ -147,6 +152,8 @@ def _angka(nilai, nama_field, node_id, wajib=True, bawaan=0.0):
 
 
 def _haversine_km(a, b):
+    """Jarak lingkaran besar antara dua koordinat, dalam kilometer.
+    """
     lat1, lon1 = math.radians(a[0]), math.radians(a[1])
     lat2, lon2 = math.radians(b[0]), math.radians(b[1])
     dlat, dlon = lat2 - lat1, lon2 - lon1
@@ -155,6 +162,11 @@ def _haversine_km(a, b):
 
 
 def _baca_sheet(wb, nama):
+    """Satu sheet menjadi daftar dict, kuncinya diambil dari baris header.
+
+    Baris yang seluruh selnya kosong dilewati, karena sheet sering menyisakan
+    baris kosong di bawah data.
+    """
     if nama not in wb.sheetnames:
         raise ValueError(f"Sheet '{nama}' tidak ada pada dataset.")
     ws = wb[nama]
@@ -250,6 +262,14 @@ def _acuan_ulasan(baris):
 
 
 def _muat_lokasi(baris, peran, v_ref=None):
+    """Baris sheet menjadi dict atribut node, sekaligus menghitung skornya.
+
+    Node yang kolom usable_for_model-nya bernilai tidak dilewati, sesuai
+    kriteria kelayakan kandidat pada subbab 3.1.
+
+    Skor dihitung di sini, bukan di pemanggil, supaya setiap node membawa
+    mu, pi, dan skor gabungannya bersama atribut lain.
+    """
     lokasi = {}
     for b in baris:
         node_id = _teks(b.get("location_id"))
@@ -528,6 +548,12 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
 
 
 def cetak_ringkasan(data_path=DATA_PATH):
+    """Mencetak ringkasan dataset untuk pemeriksaan manual.
+
+    Dipakai saat ingin memastikan dataset terbaca benar tanpa menjalankan
+    optimizer: jumlah node, rentang skor, rentang harga, sebaran kategori,
+    presipitasi, jarak, dan lima destinasi berskor tertinggi dan terendah.
+    """
     data = muat_dataset(data_path)
     node = data["node"]
     print("Dataset itinerary wisata multi-menginap")
