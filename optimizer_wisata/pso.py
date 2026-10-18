@@ -9,11 +9,12 @@ Partikel tidak menyimpan itinerary, melainkan prioritas yang diterjemahkan jadi
 itinerary. Yang bergerak di ruang pencarian nilai kuncinya, dan itulah yang
 mengubah urutan, bukan sebaliknya.
 
-Yang ada di berkas ini baru pengodean dan penerjemahan. Perbaikan solusi,
-pembaruan kecepatan (2.21) dan posisi (2.22), serta kalang swarm belum ada.
+Persamaan: (2.20) fitness, (2.21) dan (2.22) pembaruan kecepatan dan posisi.
 """
 
 import random
+import time
+from copy import deepcopy
 
 import model as M
 
@@ -132,7 +133,12 @@ def _panjang_rute(data, urutan):
 
 def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
                 minimum_kategori=None, kategori_wajib=None):
-    """Kunci partikel jadi itinerary lengkap."""
+    """Kunci partikel jadi itinerary lengkap, lalu diperbaiki.
+
+    Perbaikan dulu baru penilaian. Menilai solusi mentah akan menghukum partikel
+    atas pelanggaran yang sebenarnya masih bisa diatasi, jadi partikel menjauh
+    dari wilayah yang justru menjanjikan.
+    """
     kunci = set(kunci or [])
     tolak = set(tolak or [])
     node = data["node"]
@@ -194,6 +200,10 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
         else:
             solusi["rute"][d] = [awal, akhir]
 
+    _perbaiki_kunci(data, solusi, kunci, kota_hari)
+    _perbaiki_anggaran(data, solusi, anggaran)
+    _perbaiki_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari)
+
     for d in data["D"]:
         urutan = solusi["rute"].get(d) or []
         if len(urutan) >= 2:
@@ -202,29 +212,208 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
     return solusi
 
 
+def _susun_ulang_hari(data, solusi, d):
+    urutan = solusi["rute"].get(d) or []
+    if len(urutan) < 2:
+        return
+    isi = [n for n in urutan if n in data["tau"]]
+    solusi["rute"][d] = _rute_terdekat(data, urutan[0], urutan[-1], isi)
+
+
+def _perbaiki_kunci(data, solusi, kunci, kota_hari):
+    """Memaksa destinasi terkunci masuk, menggeser destinasi berskor terendah bila perlu."""
+    node = data["node"]
+    for i in kunci:
+        if solusi["pilih"].get(i):
+            continue
+        hari_cocok = [d for d in data["D"] if kota_hari[d] == node[i]["kota"]]
+        if not hari_cocok:
+            hari_cocok = list(data["D"])
+        disisipkan = False
+        for d in hari_cocok:
+            urutan = solusi["rute"].get(d) or []
+            if len(urutan) < 2:
+                continue
+            isi = [n for n in urutan if n in data["tau"]]
+            calon_isi = isi + [i]
+            while True:
+                calon = _rute_terdekat(data, urutan[0], urutan[-1], calon_isi)
+                _, selesai, langgar = M.jadwal_hari(data, calon, d)
+                muat = selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and not langgar
+                if muat or len(calon_isi) <= 1:
+                    break
+                # buang destinasi berskor terendah yang tidak terkunci
+                buang = [x for x in calon_isi if x != i and x not in kunci]
+                if not buang:
+                    break
+                keluar = min(buang, key=lambda x: data["s_bar"][x, d])
+                calon_isi.remove(keluar)
+                solusi["pilih"][keluar] = 0
+                solusi["hari"].pop(keluar, None)
+            if muat:
+                solusi["rute"][d] = calon
+                solusi["pilih"][i] = 1
+                solusi["hari"][i] = d
+                disisipkan = True
+                break
+        if not disisipkan:
+            # dibiarkan tidak terpilih, penalti pada fitness yang akan menandainya
+            continue
+
+
+def _perbaiki_anggaran(data, solusi, anggaran):
+    """Membuang destinasi paling tidak efisien sampai biaya total masuk anggaran."""
+    f, s_bar = data["f"], data["s_bar"]
+    for _ in range(len(data["P"])):
+        pen = M.hitung_penalti(data, solusi, anggaran)
+        if pen["lebih_anggaran"] <= M.TOLERANSI:
+            return
+        terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
+        if not terpilih:
+            return
+        # rasio skor terhadap biaya, yang terkecil dibuang lebih dulu
+        keluar = min(terpilih, key=lambda i: s_bar[i, solusi["hari"][i]] / (f[i] + 1.0))
+        d = solusi["hari"][keluar]
+        solusi["pilih"][keluar] = 0
+        solusi["hari"].pop(keluar, None)
+        solusi["rute"][d] = [n for n in solusi["rute"][d] if n != keluar]
+        _susun_ulang_hari(data, solusi, d)
+
+
+def _perbaiki_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
+    """Menyisipkan destinasi berskor tertinggi dari kategori yang belum terwakili."""
+    if not kategori_wajib:
+        return
+    node = data["node"]
+    minimum_kategori = minimum_kategori or {}
+    for kat in kategori_wajib:
+        butuh = minimum_kategori.get(kat, 1)
+        while True:
+            terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
+            ada = sum(1 for i in terpilih if node[i]["kategori"] == kat)
+            if ada >= butuh:
+                break
+            kandidat = [i for i in data["P"]
+                        if node[i]["kategori"] == kat and not solusi["pilih"].get(i)]
+            if not kandidat:
+                break
+            masuk = max(kandidat, key=lambda i: data["s"][i])
+            hari_cocok = [d for d in data["D"] if kota_hari[d] == node[masuk]["kota"]]
+            berhasil = False
+            for d in hari_cocok or data["D"]:
+                urutan = solusi["rute"].get(d) or []
+                if len(urutan) < 2:
+                    continue
+                isi = [n for n in urutan if n in data["tau"]] + [masuk]
+                calon = _rute_terdekat(data, urutan[0], urutan[-1], isi)
+                _, selesai, langgar = M.jadwal_hari(data, calon, d)
+                if selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and not langgar:
+                    solusi["rute"][d] = calon
+                    solusi["pilih"][masuk] = 1
+                    solusi["hari"][masuk] = d
+                    berhasil = True
+                    break
+            if not berhasil:
+                break
+
+
+# -- Persamaan (2.21) dan (2.22) --
+def perbarui_partikel(partikel, gbest_posisi, rng, inersia=INERSIA, c1=C1, c2=C2):
+    """r1 dan r2 diundi ulang untuk setiap dimensi pada setiap iterasi.
+
+    Inilah sebabnya setiap kunci bergerak dengan besar yang berbeda meskipun
+    menghadap pbest dan gbest yang sama.
+    """
+    lo, hi = BATAS_POSISI
+    vlo, vhi = BATAS_KECEPATAN
+    for p in partikel:
+        for n in p["posisi"]:
+            r1, r2 = rng.random(), rng.random()
+            v = (
+                inersia * p["kecepatan"][n]
+                + c1 * r1 * (p["pbest_posisi"][n] - p["posisi"][n])
+                + c2 * r2 * (gbest_posisi[n] - p["posisi"][n])
+            )
+            v = max(vlo, min(vhi, v))
+            p["kecepatan"][n] = v
+            p["posisi"][n] = max(lo, min(hi, p["posisi"][n] + v))
+
+
+def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
+                 minimum_kategori=None, kategori_wajib=None,
+                 jumlah_partikel=JUMLAH_PARTIKEL, maks_iterasi=MAKS_ITERASI,
+                 seed=SEED, cetak=False, kabar=None):
+    """Menjalankan PSO.
+
+    kabar(iterasi, maks, gbest) dipanggil tiap iterasi kalau diberikan. Dipakai
+    antarmuka web karena satu kali jalan pada dataset penuh makan puluhan detik.
+    """
+    mulai = time.perf_counter()
+    rng = random.Random(seed)
+    partikel = inisialisasi_partikel(data, jumlah_partikel, seed)
+
+    gbest_posisi = dict(partikel[0]["posisi"])
+    gbest_solusi = None
+    gbest_hasil = None
+    gbest_fitness = float("inf")
+    riwayat = []
+    tanpa_perbaikan = 0
+
+    for iterasi in range(maks_iterasi):
+        for p in partikel:
+            solusi = terjemahkan(data, p["posisi"], anggaran, kunci, tolak,
+                                 minimum_kategori, kategori_wajib)
+            hasil = M.fitness(data, solusi, anggaran, bobot, minimum_kategori, kategori_wajib)
+            F = hasil["F"]
+            if F < p["pbest_fitness"]:
+                p["pbest_fitness"] = F
+                p["pbest_posisi"] = dict(p["posisi"])
+            if F < gbest_fitness - 1e-12:
+                gbest_fitness = F
+                gbest_posisi = dict(p["posisi"])
+                gbest_solusi = deepcopy(solusi)
+                gbest_hasil = hasil
+                tanpa_perbaikan = 0
+
+        riwayat.append(gbest_fitness)
+        if kabar is not None:
+            kabar(iterasi + 1, maks_iterasi, gbest_fitness)
+        tanpa_perbaikan += 1
+        if tanpa_perbaikan > SABAR:
+            break
+        perbarui_partikel(partikel, gbest_posisi, rng)
+
+    ok, pesan_validasi = M.validasi_solusi(data, gbest_solusi, kunci, tolak)
+    keluaran = {
+        "metode": "PSO",
+        "solusi": gbest_solusi,
+        "hasil": gbest_hasil,
+        "fitness": gbest_fitness,
+        "riwayat": riwayat,
+        "iterasi_terpakai": len(riwayat),
+        "runtime": time.perf_counter() - mulai,
+        "seed": seed,
+        "validasi_ok": ok,
+        "validasi_pesan": pesan_validasi,
+    }
+    if cetak:
+        cetak_hasil(data, keluaran)
+    return keluaran
+
+
+def cetak_hasil(data, keluaran):
+    M.cetak_itinerary(data, keluaran["solusi"], keluaran["hasil"],
+                      judul=f"Itinerary hasil {keluaran['metode']}")
+    print(f"  iterasi terpakai   : {keluaran['iterasi_terpakai']}")
+    print(f"  seed               : {keluaran['seed']}")
+    print(f"  runtime            : {keluaran['runtime']:.3f} detik")
+    print(f"  validasi struktur  : {'LOLOS' if keluaran['validasi_ok'] else 'GAGAL'}")
+    for p in keluaran["validasi_pesan"]:
+        print(f"    - {p}")
+
+
 if __name__ == "__main__":
     import dataset as DS
 
     d = DS.muat_dataset(jumlah_hari=3)
-    bobot = M.PROFIL_BOBOT["seimbang"]
-    anggaran = 3_000_000
-
-    kawanan = inisialisasi_partikel(d, JUMLAH_PARTIKEL, SEED)
-    print(f"{JUMLAH_PARTIKEL} partikel, {len(kawanan[0]['posisi'])} kunci per partikel")
-    print(f"seed {SEED}\n")
-
-    nilai = []
-    for k, p in enumerate(kawanan, start=1):
-        solusi = terjemahkan(d, p["posisi"], anggaran)
-        hasil = M.fitness(d, solusi, anggaran, bobot)
-        ok, _ = M.validasi_solusi(d, solusi)
-        nilai.append((hasil["F"], hasil["Z"], hasil["layak"], ok,
-                      sum(solusi["pilih"].values())))
-
-    layak = sum(1 for v in nilai if v[2])
-    print(f"partikel layak        : {layak} dari {len(nilai)}")
-    print(f"struktur solusi lolos : {sum(1 for v in nilai if v[3])} dari {len(nilai)}")
-    print(f"F terbaik             : {min(v[0] for v in nilai):.6f}")
-    print(f"F terburuk            : {max(v[0] for v in nilai):.6f}")
-    print(f"Z terbaik             : {min(v[1] for v in nilai):.6f}")
-    print(f"destinasi terpilih    : {min(v[4] for v in nilai)} sampai {max(v[4] for v in nilai)}")
+    jalankan_pso(d, anggaran=3_000_000, bobot=M.PROFIL_BOBOT["seimbang"], cetak=True)

@@ -16,14 +16,15 @@ kapasitas kendaraan membatasi muatan per rute.
 
 ## Adaptasi ke itinerary wisata
 
-`optimizer_wisata/` menampung versi yang sedang dikerjakan. PSO dan MILP masih
-belum dipindahkan dari `optimizer/`.
+`optimizer_wisata/` menampung versi yang sedang dikerjakan. MILP masih belum
+dipindahkan dari `optimizer/`.
 
 | Berkas | Isi |
 |---|---|
 | `optimizer_wisata/dataset.py` | pemuat node wisata dari `data/*.xlsx` |
 | `optimizer_wisata/model.py` | objektif (2.1), penalti batasan, dan fitness (2.20) |
 | `optimizer_wisata/clarke_wright.py` | Clarke-Wright Savings, heuristik pembanding |
+| `optimizer_wisata/pso.py` | Particle Swarm Optimization, metode utama |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
 akomodasi di Semarang dan Surakarta. Tiap node membawa kota, kategori,
