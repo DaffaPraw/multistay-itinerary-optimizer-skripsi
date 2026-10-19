@@ -27,6 +27,8 @@ Persamaan yang diterapkan di berkas ini:
     (2.18a), (2.18b)             penguncian dan penolakan destinasi
     (2.20)                       fungsi fitness
 """
+from copy import deepcopy
+
 import dataset
 
 # -- pengaturan --
@@ -463,6 +465,88 @@ def susun_ulang_hari(data, solusi, d):
     solusi["rute"][d] = rute_tetangga_terdekat(data, urutan[0], urutan[-1], isi)
 
 
+def _ujung_rute_ikut_hotel(data, solusi):
+    """Menyusun ulang seluruh rute supaya ujungnya mengikuti akomodasi yang berlaku.
+
+    Dipanggil sesudah akomodasi diganti. Rute hari d berawal di akomodasi malam d
+    dan berakhir di akomodasi malam berikutnya, jadi mengganti satu malam
+    menyentuh dua hari sekaligus.
+    """
+    m = data["m"]
+    for d in data["D"]:
+        urutan = solusi["rute"].get(d) or []
+        if len(urutan) < 2:
+            continue
+        awal = solusi["hotel"].get(d)
+        akhir = solusi["hotel"].get(malam_akhir(d, m))
+        if awal is None or akhir is None:
+            continue
+        isi = [n for n in urutan if n in data["tau"]]
+        solusi["rute"][d] = rute_tetangga_terdekat(data, awal, akhir, isi)
+
+
+def ganti_akomodasi_lebih_murah(data, solusi, anggaran):
+    """Mengganti akomodasi dengan yang lebih murah di kota yang sama (2.17).
+
+    Dicoba sebelum destinasi dibuang, karena akomodasi yang mendominasi biaya.
+    Membuang destinasi dulu bisa menghabiskan seluruh itinerary dan tetap
+    melampaui anggaran, sebab harga kamar tidak pernah ikut berkurang.
+
+    Penggantian yang membuat salah satu hari tidak lagi muat dibatalkan, karena
+    akomodasi yang lebih murah dapat berada jauh dari destinasi hari itu.
+    """
+    node, harga = data["node"], data["p"]
+    for _ in range(len(data["D"]) * max(1, len(data["H"]))):
+        pen = hitung_penalti(data, solusi, anggaran)
+        if pen["lebih_anggaran"] <= TOLERANSI:
+            return
+        calon = []
+        for d in data["D"]:
+            kini = solusi["hotel"].get(d)
+            if kini is None:
+                continue
+            for h in data["H"]:
+                if h != kini and node[h]["kota"] == node[kini]["kota"] and harga[h] < harga[kini]:
+                    calon.append((harga[kini] - harga[h], d, h))
+        if not calon:
+            return
+        calon.sort(key=lambda x: (-x[0], x[1], x[2]))
+
+        diterima = False
+        for _hemat, d, h in calon:
+            uji = deepcopy(solusi)
+            uji["hotel"][d] = h
+            _ujung_rute_ikut_hotel(data, uji)
+            if all(hari_muat(data, uji["rute"][x], x)[0]
+                   for x in data["D"] if len(uji["rute"].get(x) or []) >= 2):
+                solusi["hotel"] = uji["hotel"]
+                solusi["rute"] = uji["rute"]
+                diterima = True
+                break
+        if not diterima:
+            return
+
+
+def _biaya_tanpa_destinasi(data, solusi):
+    """Biaya yang tersisa seandainya seluruh destinasi dibuang.
+
+    Yaitu harga kamar seluruh malam ditambah bahan bakar perpindahan antar
+    akomodasi. Inilah lantai biaya yang tidak dapat diturunkan dengan membuang
+    destinasi, berapa pun banyaknya.
+    """
+    kosong = deepcopy(solusi)
+    for i in data["P"]:
+        kosong["pilih"][i] = 0
+    kosong["hari"] = {}
+    m = data["m"]
+    for d in data["D"]:
+        awal = kosong["hotel"].get(d)
+        akhir = kosong["hotel"].get(malam_akhir(d, m))
+        kosong["rute"][d] = [awal, akhir] if awal and akhir else []
+    k = komponen_objektif(data, kosong)
+    return k["biaya_hotel"] + k["biaya_transport"]
+
+
 def pangkas_sampai_anggaran(data, solusi, anggaran):
     """Membuang destinasi paling tidak efisien sampai biaya masuk anggaran (2.17).
 
@@ -471,23 +555,36 @@ def pangkas_sampai_anggaran(data, solusi, anggaran):
     yang bersangkutan disusun ulang sesudahnya, karena urutan yang tersisa belum
     tentu masih yang terbaik.
 
-    Hanya menyentuh destinasi dan tidak pernah meninjau ulang pilihan hotel,
-    padahal hotel yang mendominasi biaya. Itu keterbatasan yang sudah terukur.
+    Penggantian akomodasi ke yang lebih murah dicoba lebih dulu, karena harga
+    kamar mendominasi biaya dan membuang destinasi saja tidak pernah
+    menguranginya.
     """
     f, s_bar = data["f"], data["s_bar"]
+
+    # Akomodasi hanya ditinjau ulang bila membuang seluruh destinasi pun tidak
+    # cukup. Dengan begitu jalur lama tidak berubah sama sekali pada kasus yang
+    # memang sudah bisa diselesaikan dengan membuang destinasi saja.
+    if _biaya_tanpa_destinasi(data, solusi) > anggaran + TOLERANSI:
+        ganti_akomodasi_lebih_murah(data, solusi, anggaran)
+
     for _ in range(len(data["P"])):
         pen = hitung_penalti(data, solusi, anggaran)
         if pen["lebih_anggaran"] <= TOLERANSI:
             return
         terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
         if not terpilih:
-            return
+            break
         keluar = min(terpilih, key=lambda i: s_bar[i, solusi["hari"][i]] / (f[i] + 1.0))
         d = solusi["hari"][keluar]
         solusi["pilih"][keluar] = 0
         solusi["hari"].pop(keluar, None)
         solusi["rute"][d] = [n for n in solusi["rute"][d] if n != keluar]
         susun_ulang_hari(data, solusi, d)
+
+    # Dicoba sekali lagi di akhir. Penggantian akomodasi yang tadi ditolak karena
+    # harinya masih penuh bisa jadi layak sesudah destinasi berkurang.
+    if hitung_penalti(data, solusi, anggaran)["lebih_anggaran"] > TOLERANSI:
+        ganti_akomodasi_lebih_murah(data, solusi, anggaran)
 
 
 def penuhi_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
