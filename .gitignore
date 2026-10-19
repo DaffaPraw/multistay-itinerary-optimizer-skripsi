@@ -13,4 +13,8 @@ env/
 ors_key.txt
 
 # keluaran percobaan, dibangkitkan ulang dari kode
-optimizer_wisata/hasil/
+optimizer_wisata/hasil/*
+
+# Matriks ORS dikecualikan: tidak dapat dibangkitkan ulang tanpa kunci API
+# dan kuota, jadi diperlakukan sebagai data, bukan keluaran.
+!optimizer_wisata/hasil/matriks_ors_120.json

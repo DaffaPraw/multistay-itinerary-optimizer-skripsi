@@ -347,8 +347,31 @@ def _muat_cuaca(baris):
     return {kunci: max(nilai) for kunci, nilai in kumpul.items() if nilai}
 
 
+BERKAS_MATRIKS_ORS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "hasil", "matriks_ors_120.json")
+
+
 def _kecepatan(kota_u, kota_v):
     return KECEPATAN_KOTA_KMJAM if kota_u == kota_v else KECEPATAN_ANTARKOTA_KMJAM
+
+
+def muat_node_saja(data_path=DATA_PATH, v_ref=None):
+    """Node beserta koordinatnya, tanpa cuaca dan tanpa matriks.
+
+    Dipakai modul ors. Sengaja tidak disaring kota maupun kategori: matriksnya
+    diambil sekali untuk seluruh dataset lalu dipakai ulang penyaringan apa pun.
+    """
+    wb = load_workbook(data_path, data_only=True, read_only=True)
+    try:
+        baris_destinasi = _baca_sheet(wb, SHEET_DESTINASI)
+        baris_akomodasi = _baca_sheet(wb, SHEET_AKOMODASI)
+    finally:
+        wb.close()
+    if v_ref is None:
+        v_ref = _acuan_ulasan(baris_destinasi + baris_akomodasi)
+    gabung = {**_muat_lokasi(baris_destinasi, "destinasi", v_ref),
+              **_muat_lokasi(baris_akomodasi, "akomodasi", v_ref)}
+    return {k: gabung[k] for k in sorted(gabung)}
 
 
 def bangun_matriks(node, lapor=False):

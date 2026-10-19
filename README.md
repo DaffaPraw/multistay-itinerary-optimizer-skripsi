@@ -28,6 +28,7 @@ kapasitas kendaraan membatasi muatan per rute.
 | `optimizer_wisata/jalankan.py` | penggerak: tiga profil, perbandingan metode, kunci/tolak |
 | `optimizer_wisata/lampiran_rekayasa.py` | hitung ulang Lampiran 3 pada dataset rekayasa 8 node |
 | `optimizer_wisata/gambar_rute.py` | gambar ulang Gambar 2.3, 2.5, dan 2.7 dari hasil |
+| `optimizer_wisata/ors.py` | pengambilan matriks jarak dari OpenRouteService |
 | `optimizer_wisata/milp_gurobi.py` | MILP Gurobi, acuan solusi optimal pada subset kecil |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
