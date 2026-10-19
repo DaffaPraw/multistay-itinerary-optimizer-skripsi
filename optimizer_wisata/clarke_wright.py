@@ -18,13 +18,17 @@ Sepuluh langkah:
      9. Mengulangi langkah delapan sampai seluruh pasangan selesai diproses.
     10. Menghitung nilai objektif dan memvalidasi kelayakan solusi akhir.
 
-Kompromi di langkah 2: skor terkoreksi cuaca butuh hari kunjungan, padahal hari
-baru ditetapkan di langkah 4. Jadi langkah 2 memakai rata-rata presipitasi
-sepanjang perjalanan sebagai pendekatan. Setelah hari ditetapkan skornya dihitung
-ulang dengan rho hari itu, dan nilai itulah yang dipakai di langkah 10.
+Skor yang dipakai pada langkah 2 adalah skor terkoreksi cuaca (2.2), bukan skor
+mentah. Skor terkoreksi bergantung hari kunjungan lewat probabilitas presipitasi,
+sedangkan langkah 2 berjalan sebelum destinasi dialokasikan ke hari pada langkah
+4. Karena itu langkah 2 memakai rata-rata probabilitas presipitasi sepanjang
+rentang tanggal perjalanan, sehingga tiap kandidat memperoleh satu skor
+terkoreksi yang tidak bergantung hari.
 
-Selisih antara rata-rata dan nilai harian ini salah satu sumber perbedaan hasil
-terhadap PSO, yang menetapkan hari dan menilai skor pada hari yang sama.
+Clarke-Wright menentukan keanggotaan destinasi lebih dahulu daripada penempatan
+harinya, sehingga skor per hari memang belum tersedia saat penyaringan
+dilakukan. Setelah hari ditetapkan di langkah 4, skor dihitung ulang memakai rho
+hari yang bersangkutan, dan nilai itulah yang masuk nilai objektif di langkah 10.
 """
 
 import time
@@ -34,15 +38,22 @@ import model as M
 
 
 def skor_praalokasi(data):
-    """Skor terkoreksi memakai rata-rata presipitasi sepanjang perjalanan.
+    """Satu skor terkoreksi per destinasi yang tidak bergantung hari, (2.2).
 
-    Hanya untuk langkah 2 dan 3, saat hari kunjungan belum ditetapkan.
+    Memakai rata-rata probabilitas presipitasi sepanjang rentang tanggal
+    perjalanan. Dipakai langkah 2 dan 3, yaitu ketika keanggotaan destinasi
+    ditentukan dan hari kunjungan belum ada.
+
+    Saklar cuaca diambil dari dataset, bukan dari nilai bawaan skor_terkoreksi.
+    Tanpa itu koreksinya selalu mati berapa pun rho-nya, dan peringkat langkah 2
+    diam-diam mengabaikan cuaca sementara langkah 10 memperhitungkannya.
     """
     hasil = {}
     for i in data["P"]:
         nilai = [data["rho"][i, d] for d in data["D"]]
         rho_rata = sum(nilai) / len(nilai) if nilai else 0.0
-        hasil[i] = DS.skor_terkoreksi(data["s"][i], data["gamma"][i], rho_rata)
+        hasil[i] = DS.skor_terkoreksi(data["s"][i], data["gamma"][i], rho_rata,
+                                      data["cuaca_aktif"])
     return hasil
 
 
@@ -72,7 +83,9 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
     # ---------- langkah 1: penyaringan sudah dilakukan saat pemuatan dataset
     kandidat = [i for i in data["P"] if i not in tolak]
 
-    # ---------- langkah 2: peringkat berdasarkan rasio skor terkoreksi terhadap durasi
+    # ---------- langkah 2: peringkat berdasarkan rasio skor terkoreksi terhadap
+    # durasi kunjungan. Rasio, bukan skor mentah, karena destinasi berskor tinggi
+    # berdurasi panjang memakan kuota yang bisa dipakai beberapa destinasi lain.
     s_pra = skor_praalokasi(data)
     rasio = {i: s_pra[i] / tau[i] if tau[i] > 0 else 0.0 for i in kandidat}
     # destinasi terkunci diberi prioritas mutlak, Persamaan (2.18a)
