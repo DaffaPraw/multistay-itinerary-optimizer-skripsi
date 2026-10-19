@@ -14,6 +14,7 @@ Notasi mengikuti proposal:
     s_bar[i,d]   skor destinasi sesudah dikoreksi cuaca hari d
     delta, t, g  jarak (km), waktu tempuh (menit), biaya bahan bakar antar node
 """
+import json
 import math
 import os
 import re
@@ -350,9 +351,32 @@ def _muat_cuaca(baris):
 BERKAS_MATRIKS_ORS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                   "hasil", "matriks_ors_120.json")
 
+# "ors" memakai matriks jaringan jalan bila berkasnya ada, dan jatuh kembali
+# ke haversine bila tidak. "haversine" memaksa taksiran koordinat, dipakai
+# ketika hasil lama perlu diulang apa adanya.
+SUMBER_MATRIKS = "ors"
+
 
 def _kecepatan(kota_u, kota_v):
     return KECEPATAN_KOTA_KMJAM if kota_u == kota_v else KECEPATAN_ANTARKOTA_KMJAM
+
+
+def _muat_matriks_ors(berkas=BERKAS_MATRIKS_ORS):
+    """Membaca berkas matriks OpenRouteService menjadi indeks per id node."""
+    if not os.path.exists(berkas):
+        return None
+    with open(berkas, encoding="utf8") as f:
+        m = json.load(f)
+    m["indeks"] = {node_id: k for k, node_id in enumerate(m["ids"])}
+    return m
+
+
+def _pasangan_haversine(node, u, v):
+    """Taksiran satu pasangan dari koordinat. Dipakai sebagai cadangan."""
+    km = _haversine_km((node[u]["lat"], node[u]["lon"]),
+                       (node[v]["lat"], node[v]["lon"])) * FAKTOR_JALAN
+    menit = 60.0 * km / _kecepatan(node[u]["kota"], node[v]["kota"])
+    return km, menit, km / KBBM * HBBM
 
 
 def muat_node_saja(data_path=DATA_PATH, v_ref=None):
@@ -374,49 +398,68 @@ def muat_node_saja(data_path=DATA_PATH, v_ref=None):
     return {k: gabung[k] for k in sorted(gabung)}
 
 
-def bangun_matriks(node, lapor=False):
+def bangun_matriks(node, lapor=False, sumber=None):
     """Menyusun delta, t, dan g untuk seluruh pasangan node.
 
-    Jarak ditaksir dari koordinat memakai haversine dikali FAKTOR_JALAN, bukan
-    diambil dari sheet Route_Matrix pada dataset, karena matriks di sheet itu
-    sendiri masih taksiran dan belum memuat seluruh node. Nilainya perlu diganti
-    hasil layanan rute sebelum percobaan akhir.
+    Sumbernya matriks OpenRouteService. Haversine dikali FAKTOR_JALAN hanya
+    cadangan: berkas matriks belum ada, node tidak termuat di dalamnya, atau
+    pasangannya dilaporkan tidak terjangkau jaringan jalan.
 
-    Taksiran ini simetris, jadi hanya pasangan dengan u lebih kecil daripada v
-    yang dihitung lalu dicerminkan. Untuk 120 node perhitungan haversine turun
-    dari 14.280 jadi 7.140. Waktu tempuh ikut simetris karena hanya bergantung
-    jarak dan kelas kecepatan antar kota.
+    Penting: matriks jaringan jalan tidak simetris, jadi seluruh pasangan berarah
+    disimpan. Jangan dioptimasi lagi jadi pencerminan separuh pasangan seperti
+    versi taksiran koordinat; pada dataset ini 13.902 dari 14.280 pasangan
+    panjangnya berbeda menurut arahnya.
 
     Pasangannya terbagi tiga blok: antar destinasi, antar akomodasi, dan
     destinasi dengan akomodasi. Ketiganya dipakai model, karena rute harian
     berangkat dari akomodasi, melewati destinasi, lalu berakhir di akomodasi,
-    dan hari tanpa kunjungan menghasilkan arc dari akomodasi ke akomodasi.
+    dan hari tanpa kunjungan menghasilkan arc akomodasi ke akomodasi.
     """
+    if sumber is None:
+        sumber = SUMBER_MATRIKS
     ids = list(node.keys())
     delta, t, g = {}, {}, {}
-    hitung = 0
-
     for u in ids:
         delta[u, u] = t[u, u] = g[u, u] = 0.0
 
-    for a in range(len(ids)):
-        for b in range(a + 1, len(ids)):
-            u, v = ids[a], ids[b]
-            km = _haversine_km((node[u]["lat"], node[u]["lon"]),
-                               (node[v]["lat"], node[v]["lon"])) * FAKTOR_JALAN
-            menit = 60.0 * km / _kecepatan(node[u]["kota"], node[v]["kota"])
-            rupiah = km / KBBM * HBBM
-            hitung += 1
-            # dicerminkan, bukan dihitung ulang
-            delta[u, v] = delta[v, u] = km
-            t[u, v] = t[v, u] = menit
-            g[u, v] = g[v, u] = rupiah
+    matriks = _muat_matriks_ors() if sumber == "ors" else None
+    dari_ors = 0
+    dari_cadangan = 0
+
+    for u in ids:
+        for v in ids:
+            if u == v:
+                continue
+            km = menit = None
+            if matriks is not None:
+                a = matriks["indeks"].get(u)
+                b = matriks["indeks"].get(v)
+                if a is not None and b is not None:
+                    km = matriks["jarak_km"][a][b]
+                    detik = matriks["durasi_detik"][a][b]
+                    menit = None if detik is None else detik / 60.0
+            if km is None or menit is None:
+                km, menit, rupiah = _pasangan_haversine(node, u, v)
+                dari_cadangan += 1
+            else:
+                rupiah = km / KBBM * HBBM
+                dari_ors += 1
+            delta[u, v] = km
+            t[u, v] = menit
+            g[u, v] = rupiah
 
     if lapor:
         n = len(ids)
-        print(f"  matriks rute: {n} node, {hitung:,} perhitungan haversine "
-              f"untuk {n * (n - 1):,} pasangan berarah "
-              f"({1 - hitung / (n * (n - 1)):.0%} dihemat lewat simetri)")
+        total = n * (n - 1)
+        if matriks is None:
+            print(f"  matriks rute: {n} node, {total:,} pasangan berarah "
+                  f"dari taksiran koordinat (berkas OpenRouteService belum ada)")
+        else:
+            print(f"  matriks rute: {n} node, {total:,} pasangan berarah, "
+                  f"{dari_ors:,} dari jaringan jalan "
+                  f"({dari_ors / total:.1%}), {dari_cadangan:,} dari taksiran "
+                  f"koordinat sebagai cadangan")
+            print(f"  sumber matriks: {matriks['versi']}, diambil {matriks['diambil']}")
     return delta, t, g
 
 
@@ -602,7 +645,7 @@ def cetak_ringkasan(data_path=DATA_PATH):
     print(f"presipitasi       : rata {sum(rho.values()) / len(rho):.3f}  maks {max(rho.values()):.3f}  (maksimum per hari)")
     s_bar = data["s_bar"]
     print(f"skor terkoreksi   : rata {sum(s_bar.values()) / len(s_bar):.2f}  (w={data['cuaca_aktif']})")
-    print(f"faktor jalan      : {FAKTOR_JALAN} kali jarak haversine")
+    print(f"sumber matriks    : {SUMBER_MATRIKS}")
     delta = data["delta"]
     dalam = [v for (u, w), v in delta.items()
              if u != w and node[u]["kota"] == node[w]["kota"]]
