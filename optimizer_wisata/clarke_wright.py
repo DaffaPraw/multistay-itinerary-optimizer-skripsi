@@ -52,37 +52,6 @@ def penghematan(data, awal, i, j):
     return t[awal, i] + t[j, awal] - t[i, j]
 
 
-def _muat(data, urutan, d):
-    """Apakah rute hari d masih layak, beserta waktu selesainya.
-
-    Tiga hal diperiksa sekaligus: kuota waktu harian (2.12), batas tutup
-    jendela aktivitas (2.15), dan jam operasional destinasi (2.14).
-    Dipakai sebagai syarat setiap kali penggabungan dicoba.
-    """
-    _, selesai, langgar = M.jadwal_hari(data, urutan, d)
-    return (selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and langgar == 0), selesai
-
-
-def _rute_nn(data, awal, akhir, isi):
-    """Mengurutkan isi hari dengan tetangga terdekat, dari awal menuju akhir.
-
-    Awal dan akhir adalah akomodasi dan posisinya tetap. Dipakai untuk
-    menilai calon penggabungan pada langkah 8 dan untuk menyusun rute
-    akhir hari itu.
-    """
-    t = data["t"]
-    belum = list(isi)
-    urutan = [awal]
-    kini = awal
-    while belum:
-        nxt = min(belum, key=lambda v: (t[kini, v], v))
-        urutan.append(nxt)
-        belum.remove(nxt)
-        kini = nxt
-    urutan.append(akhir)
-    return urutan
-
-
 def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
                  minimum_kategori=None, kategori_wajib=None, cetak=False):
     """Menjalankan Clarke-Wright Savings, sepuluh langkah subbab 2.5.
@@ -166,8 +135,8 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
             if segmen[si][-1] != i or segmen[sj][0] != j:
                 continue
             gabung = segmen[si] + segmen[sj]
-            calon = _rute_nn(data, awal, akhir, gabung)
-            layak, _ = _muat(data, calon, d)
+            calon = M.rute_tetangga_terdekat(data, awal, akhir, gabung)
+            layak, _ = M.hari_muat(data, calon, d)
             if not layak:
                 continue
             segmen[si] = gabung
@@ -178,8 +147,8 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
         # segmen terpanjang yang masih muat dipakai sebagai rute hari ini
         terbaik, isi_terbaik = None, []
         for idx, isi in segmen.items():
-            calon = _rute_nn(data, awal, akhir, isi)
-            layak, _ = _muat(data, calon, d)
+            calon = M.rute_tetangga_terdekat(data, awal, akhir, isi)
+            layak, _ = M.hari_muat(data, calon, d)
             if layak and len(isi) > len(isi_terbaik):
                 terbaik, isi_terbaik = calon, isi
 
@@ -189,8 +158,8 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
         for i in tersedia:
             if i in isi_terbaik:
                 continue
-            calon = _rute_nn(data, awal, akhir, isi_terbaik + [i])
-            layak, _ = _muat(data, calon, d)
+            calon = M.rute_tetangga_terdekat(data, awal, akhir, isi_terbaik + [i])
+            layak, _ = M.hari_muat(data, calon, d)
             if layak:
                 terbaik, isi_terbaik = calon, isi_terbaik + [i]
 
@@ -201,8 +170,8 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
 
     # ---------- langkah 3, dikerjakan setelah hari ditetapkan supaya penyisipan
     # kategori tetap memperhatikan kuota waktu yang tersisa
-    _sisip_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari)
-    _buang_sampai_anggaran(data, solusi, anggaran)
+    M.penuhi_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari)
+    M.pangkas_sampai_anggaran(data, solusi, anggaran)
 
     for d in data["D"]:
         urutan = solusi["rute"].get(d) or []
@@ -230,70 +199,6 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
         for p in pesan:
             print(f"    - {p}")
     return keluaran
-
-
-def _sisip_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
-    """Langkah 3. Memenuhi cakupan kategori (2.7a) setelah hari ditetapkan.
-
-    Untuk setiap kategori yang belum memenuhi jumlah minimum, destinasi
-    berskor tertinggi dari kategori itu dicoba disisipkan ke hari yang
-    kotanya cocok. Kalau tidak ada hari yang masih muat, penyisipan
-    dihentikan dan penalti pada fitness yang akan menandainya.
-    """
-    if not kategori_wajib:
-        return
-    node = data["node"]
-    minimum_kategori = minimum_kategori or {}
-    for kat in kategori_wajib:
-        butuh = minimum_kategori.get(kat, 1)
-        while True:
-            terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
-            if sum(1 for i in terpilih if node[i]["kategori"] == kat) >= butuh:
-                break
-            calon = [i for i in data["P"]
-                     if node[i]["kategori"] == kat and not solusi["pilih"].get(i)]
-            if not calon:
-                break
-            masuk = max(calon, key=lambda i: data["s"][i])
-            berhasil = False
-            for d in [x for x in data["D"] if kota_hari[x] == node[masuk]["kota"]] or data["D"]:
-                urutan = solusi["rute"].get(d) or []
-                if len(urutan) < 2:
-                    continue
-                isi = [n for n in urutan if n in data["tau"]] + [masuk]
-                baru = _rute_nn(data, urutan[0], urutan[-1], isi)
-                layak, _ = _muat(data, baru, d)
-                if layak:
-                    solusi["rute"][d] = baru
-                    solusi["pilih"][masuk] = 1
-                    solusi["hari"][masuk] = d
-                    berhasil = True
-                    break
-            if not berhasil:
-                break
-
-
-def _buang_sampai_anggaran(data, solusi, anggaran):
-    """Membuang destinasi paling tidak efisien sampai biaya masuk anggaran (2.17).
-
-    Yang dibuang lebih dulu adalah destinasi dengan rasio skor terhadap
-    harga tiket terkecil, yaitu yang paling sedikit memberi mutu per rupiah.
-
-    Hanya menyentuh destinasi, tidak pernah meninjau ulang pilihan hotel.
-    """
-    f, s_bar = data["f"], data["s_bar"]
-    for _ in range(len(data["P"])):
-        pen = M.hitung_penalti(data, solusi, anggaran)
-        if pen["lebih_anggaran"] <= M.TOLERANSI:
-            return
-        terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
-        if not terpilih:
-            return
-        keluar = min(terpilih, key=lambda i: s_bar[i, solusi["hari"][i]] / (f[i] + 1.0))
-        d = solusi["hari"][keluar]
-        solusi["pilih"][keluar] = 0
-        solusi["hari"].pop(keluar, None)
-        solusi["rute"][d] = [n for n in solusi["rute"][d] if n != keluar]
 
 
 if __name__ == "__main__":

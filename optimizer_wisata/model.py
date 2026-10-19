@@ -420,6 +420,117 @@ def validasi_solusi(data, solusi, kunci=None, tolak=None):
     return not galat, galat
 
 
+# -- rutin bersama CWS dan PSO --
+# Ditaruh di sini, bukan disalin ke tiap metode, supaya keduanya memperbaiki
+# solusi dengan cara yang sama persis. Kalau salinannya terpisah dan menyimpang,
+# sebagian selisih hasil antar metode akan berasal dari perbedaan cara
+# memperbaiki, bukan dari kemampuan pencariannya.
+def rute_tetangga_terdekat(data, awal, akhir, isi):
+    """Mengurutkan isi satu hari dengan tetangga terdekat, ujungnya tetap.
+
+    Awal dan akhir adalah akomodasi dan posisinya tidak digeser.
+    """
+    t_mat = data["t"]
+    belum = list(isi)
+    urutan = [awal]
+    kini = awal
+    while belum:
+        nxt = min(belum, key=lambda v: (t_mat[kini, v], v))
+        urutan.append(nxt)
+        belum.remove(nxt)
+        kini = nxt
+    urutan.append(akhir)
+    return urutan
+
+
+def hari_muat(data, urutan, d):
+    """Apakah rute hari d masih layak, beserta waktu selesainya.
+
+    Tiga hal diperiksa sekaligus: kuota waktu harian (2.12), batas tutup jendela
+    aktivitas (2.15), dan jam operasional destinasi (2.14).
+    """
+    _, selesai, langgar = jadwal_hari(data, urutan, d)
+    muat = (selesai - T_MULAI <= BETA and selesai <= T_SELESAI and langgar == 0)
+    return muat, selesai
+
+
+def susun_ulang_hari(data, solusi, d):
+    """Menyusun ulang rute hari d dari isi yang sekarang, ujungnya dipertahankan."""
+    urutan = solusi["rute"].get(d) or []
+    if len(urutan) < 2:
+        return
+    isi = [n for n in urutan if n in data["tau"]]
+    solusi["rute"][d] = rute_tetangga_terdekat(data, urutan[0], urutan[-1], isi)
+
+
+def pangkas_sampai_anggaran(data, solusi, anggaran):
+    """Membuang destinasi paling tidak efisien sampai biaya masuk anggaran (2.17).
+
+    Yang dibuang lebih dulu adalah destinasi dengan rasio skor terhadap harga
+    tiket terkecil, yaitu yang paling sedikit memberi mutu per rupiah. Rute hari
+    yang bersangkutan disusun ulang sesudahnya, karena urutan yang tersisa belum
+    tentu masih yang terbaik.
+
+    Hanya menyentuh destinasi dan tidak pernah meninjau ulang pilihan hotel,
+    padahal hotel yang mendominasi biaya. Itu keterbatasan yang sudah terukur.
+    """
+    f, s_bar = data["f"], data["s_bar"]
+    for _ in range(len(data["P"])):
+        pen = hitung_penalti(data, solusi, anggaran)
+        if pen["lebih_anggaran"] <= TOLERANSI:
+            return
+        terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
+        if not terpilih:
+            return
+        keluar = min(terpilih, key=lambda i: s_bar[i, solusi["hari"][i]] / (f[i] + 1.0))
+        d = solusi["hari"][keluar]
+        solusi["pilih"][keluar] = 0
+        solusi["hari"].pop(keluar, None)
+        solusi["rute"][d] = [n for n in solusi["rute"][d] if n != keluar]
+        susun_ulang_hari(data, solusi, d)
+
+
+def penuhi_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
+    """Menyisipkan destinasi berskor tertinggi dari kategori yang belum terwakili (2.7a).
+
+    Hari yang dicoba lebih dulu adalah hari yang kotanya cocok dengan destinasi
+    itu. Kalau tidak ada hari yang masih muat, penyisipan dihentikan dan penalti
+    pada fitness yang akan menandainya.
+    """
+    if not kategori_wajib:
+        return
+    node = data["node"]
+    minimum_kategori = minimum_kategori or {}
+    for kat in kategori_wajib:
+        butuh = minimum_kategori.get(kat, 1)
+        while True:
+            terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
+            if sum(1 for i in terpilih if node[i]["kategori"] == kat) >= butuh:
+                break
+            calon = [i for i in data["P"]
+                     if node[i]["kategori"] == kat and not solusi["pilih"].get(i)]
+            if not calon:
+                break
+            masuk = max(calon, key=lambda i: data["s"][i])
+            hari_cocok = [x for x in data["D"] if kota_hari[x] == node[masuk]["kota"]]
+            berhasil = False
+            for d in hari_cocok or data["D"]:
+                urutan = solusi["rute"].get(d) or []
+                if len(urutan) < 2:
+                    continue
+                isi = [n for n in urutan if n in data["tau"]] + [masuk]
+                baru = rute_tetangga_terdekat(data, urutan[0], urutan[-1], isi)
+                muat, _ = hari_muat(data, baru, d)
+                if muat:
+                    solusi["rute"][d] = baru
+                    solusi["pilih"][masuk] = 1
+                    solusi["hari"][masuk] = d
+                    berhasil = True
+                    break
+            if not berhasil:
+                break
+
+
 def solusi_kosong(data):
     """Solusi kosong yang bentuknya sudah benar.
 

@@ -117,21 +117,6 @@ def _pilih_hotel(data, posisi, kota_hari):
     return hotel
 
 
-def _rute_terdekat(data, awal, akhir, destinasi):
-    """Menyusun rute satu hari dengan tetangga terdekat."""
-    t_mat = data["t"]
-    belum = list(destinasi)
-    urutan = [awal]
-    kini = awal
-    while belum:
-        nxt = min(belum, key=lambda v: (t_mat[kini, v], v))
-        urutan.append(nxt)
-        belum.remove(nxt)
-        kini = nxt
-    urutan.append(akhir)
-    return urutan
-
-
 def _panjang_rute(data, urutan):
     t_mat = data["t"]
     return sum(t_mat[urutan[k], urutan[k + 1]] for k in range(len(urutan) - 1))
@@ -175,7 +160,7 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
     def sisa_waktu(d):
         if not isi_hari[d]:
             return M.BETA
-        rute = _rute_terdekat(data, hotel[d], hotel[M.malam_akhir(d, m)], isi_hari[d])
+        rute = M.rute_tetangga_terdekat(data, hotel[d], hotel[M.malam_akhir(d, m)], isi_hari[d])
         return M.BETA - M.durasi_hari(data, rute, d)
 
     for kota, daftar_hari in hari_kota.items():
@@ -186,7 +171,7 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
         for i in kandidat:
             # hari dengan sisa waktu terbanyak dicoba lebih dulu, supaya muatan merata
             for d in sorted(daftar_hari, key=lambda x: -sisa_waktu(x)):
-                calon = _rute_terdekat(data, hotel[d], hotel[M.malam_akhir(d, m)],
+                calon = M.rute_tetangga_terdekat(data, hotel[d], hotel[M.malam_akhir(d, m)],
                                        isi_hari[d] + [i])
                 _, selesai, langgar = M.jadwal_hari(data, calon, d)
                 if selesai - M.T_MULAI > M.BETA or selesai > M.T_SELESAI or langgar:
@@ -199,7 +184,7 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
         if awal is None or akhir is None:
             continue
         if isi_hari[d]:
-            solusi["rute"][d] = _rute_terdekat(data, awal, akhir, isi_hari[d])
+            solusi["rute"][d] = M.rute_tetangga_terdekat(data, awal, akhir, isi_hari[d])
             for i in isi_hari[d]:
                 solusi["pilih"][i] = 1
                 solusi["hari"][i] = d
@@ -207,8 +192,8 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
             solusi["rute"][d] = [awal, akhir]
 
     _perbaiki_kunci(data, solusi, kunci, kota_hari)
-    _perbaiki_anggaran(data, solusi, anggaran)
-    _perbaiki_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari)
+    M.pangkas_sampai_anggaran(data, solusi, anggaran)
+    M.penuhi_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari)
 
     for d in data["D"]:
         urutan = solusi["rute"].get(d) or []
@@ -216,19 +201,6 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
             tiba, _, _ = M.jadwal_hari(data, urutan, d)
             solusi["tiba"].update(tiba)
     return solusi
-
-
-def _susun_ulang_hari(data, solusi, d):
-    """Menyusun ulang rute hari d dari isi yang sekarang, ujungnya dipertahankan.
-
-    Dipakai sesudah perbaikan membuang destinasi, karena rute yang tinggal
-    sebagian urutannya belum tentu masih yang terbaik.
-    """
-    urutan = solusi["rute"].get(d) or []
-    if len(urutan) < 2:
-        return
-    isi = [n for n in urutan if n in data["tau"]]
-    solusi["rute"][d] = _rute_terdekat(data, urutan[0], urutan[-1], isi)
 
 
 def _perbaiki_kunci(data, solusi, kunci, kota_hari):
@@ -248,7 +220,7 @@ def _perbaiki_kunci(data, solusi, kunci, kota_hari):
             isi = [n for n in urutan if n in data["tau"]]
             calon_isi = isi + [i]
             while True:
-                calon = _rute_terdekat(data, urutan[0], urutan[-1], calon_isi)
+                calon = M.rute_tetangga_terdekat(data, urutan[0], urutan[-1], calon_isi)
                 _, selesai, langgar = M.jadwal_hari(data, calon, d)
                 muat = selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and not langgar
                 if muat or len(calon_isi) <= 1:
@@ -270,62 +242,6 @@ def _perbaiki_kunci(data, solusi, kunci, kota_hari):
         if not disisipkan:
             # dibiarkan tidak terpilih, penalti pada fitness yang akan menandainya
             continue
-
-
-def _perbaiki_anggaran(data, solusi, anggaran):
-    """Membuang destinasi paling tidak efisien sampai biaya total masuk anggaran."""
-    f, s_bar = data["f"], data["s_bar"]
-    for _ in range(len(data["P"])):
-        pen = M.hitung_penalti(data, solusi, anggaran)
-        if pen["lebih_anggaran"] <= M.TOLERANSI:
-            return
-        terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
-        if not terpilih:
-            return
-        # rasio skor terhadap biaya, yang terkecil dibuang lebih dulu
-        keluar = min(terpilih, key=lambda i: s_bar[i, solusi["hari"][i]] / (f[i] + 1.0))
-        d = solusi["hari"][keluar]
-        solusi["pilih"][keluar] = 0
-        solusi["hari"].pop(keluar, None)
-        solusi["rute"][d] = [n for n in solusi["rute"][d] if n != keluar]
-        _susun_ulang_hari(data, solusi, d)
-
-
-def _perbaiki_kategori(data, solusi, minimum_kategori, kategori_wajib, kota_hari):
-    """Menyisipkan destinasi berskor tertinggi dari kategori yang belum terwakili."""
-    if not kategori_wajib:
-        return
-    node = data["node"]
-    minimum_kategori = minimum_kategori or {}
-    for kat in kategori_wajib:
-        butuh = minimum_kategori.get(kat, 1)
-        while True:
-            terpilih = [i for i in data["P"] if solusi["pilih"].get(i)]
-            ada = sum(1 for i in terpilih if node[i]["kategori"] == kat)
-            if ada >= butuh:
-                break
-            kandidat = [i for i in data["P"]
-                        if node[i]["kategori"] == kat and not solusi["pilih"].get(i)]
-            if not kandidat:
-                break
-            masuk = max(kandidat, key=lambda i: data["s"][i])
-            hari_cocok = [d for d in data["D"] if kota_hari[d] == node[masuk]["kota"]]
-            berhasil = False
-            for d in hari_cocok or data["D"]:
-                urutan = solusi["rute"].get(d) or []
-                if len(urutan) < 2:
-                    continue
-                isi = [n for n in urutan if n in data["tau"]] + [masuk]
-                calon = _rute_terdekat(data, urutan[0], urutan[-1], isi)
-                _, selesai, langgar = M.jadwal_hari(data, calon, d)
-                if selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and not langgar:
-                    solusi["rute"][d] = calon
-                    solusi["pilih"][masuk] = 1
-                    solusi["hari"][masuk] = d
-                    berhasil = True
-                    break
-            if not berhasil:
-                break
 
 
 # -- Persamaan (2.21) dan (2.22) --
