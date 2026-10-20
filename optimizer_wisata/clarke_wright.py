@@ -29,12 +29,21 @@ Clarke-Wright menentukan keanggotaan destinasi lebih dahulu daripada penempatan
 harinya, sehingga skor per hari memang belum tersedia saat penyaringan
 dilakukan. Setelah hari ditetapkan di langkah 4, skor dihitung ulang memakai rho
 hari yang bersangkutan, dan nilai itulah yang masuk nilai objektif di langkah 10.
+
+Kota tempat menginap tidak terikat kota destinasi hari itu. Karena metode ini
+deterministik dan tidak punya kunci acak seperti PSO, seluruh pola kota menginap
+yang mungkin dicoba lalu yang terbaik menurut fitness dipakai.
 """
 
 import time
 
 import dataset as DS
 import model as M
+
+
+# Banyaknya pola kota menginap yang dicoba dibatasi supaya perjalanan panjang
+# tidak meledak. Dua kota tiga malam hanya 8 pola; tujuh malam sudah 128.
+MAKS_POLA_MENGINAP = 64
 
 
 def skor_praalokasi(data):
@@ -63,21 +72,27 @@ def penghematan(data, awal, i, j):
     return t[awal, i] + t[j, awal] - t[i, j]
 
 
-def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
-                 minimum_kategori=None, kategori_wajib=None, cetak=False):
-    """Menjalankan Clarke-Wright Savings, sepuluh langkah subbab 2.5.
+def _pola_menginap(data):
+    """Seluruh pola kota menginap yang dicoba, dibatasi MAKS_POLA_MENGINAP.
 
-    Urutan pengerjaannya tidak sama dengan urutan nomor langkahnya.
-    Langkah 3, pemenuhan cakupan kategori, dikerjakan paling akhir karena
-    penyisipan destinasi baru perlu tahu kuota waktu mana yang masih
-    tersisa, dan itu baru diketahui setelah hari ditetapkan di langkah 4.
-
-    Mengembalikan dict berisi solusi, hasil penilaian, nilai fitness,
-    runtime, dan status validasi struktur.
+    Pola pertama yang dihasilkan selalu pola seragam, yaitu seluruh malam di kota
+    yang sama, karena pola itulah yang paling sering menjadi optimum MILP dan
+    dulu tidak dapat diwakili sama sekali.
     """
-    mulai = time.perf_counter()
-    kunci = set(kunci or [])
-    tolak = set(tolak or [])
+    kota, m = data["kota"], data["m"]
+    if len(kota) == 1:
+        return [{d: kota[0] for d in data["D"]}]
+    seragam = [{d: k for d in data["D"]} for k in kota]
+    campur = []
+    for mask in range(1, 2 ** m - 1):
+        pola = {d: kota[(mask >> (d - 1)) & 1] for d in data["D"]}
+        campur.append(pola)
+    return (seragam + campur)[:MAKS_POLA_MENGINAP]
+
+
+def _bangun_solusi(data, anggaran, bobot, kunci, tolak, minimum_kategori,
+                   kategori_wajib, kota_menginap):
+    """Satu kali konstruksi sepuluh langkah untuk satu pola kota menginap."""
     node, tau = data["node"], data["tau"]
 
     # ---------- langkah 1: penyaringan sudah dilakukan saat pemuatan dataset
@@ -108,7 +123,7 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
         batas = max(1, m // 2)
         kota_hari = {d: (kota_urut[0] if d <= batas else kota_urut[1]) for d in data["D"]}
 
-    hotel = {d: hotel_kota.get(kota_hari[d]) for d in data["D"]}
+    hotel = {d: hotel_kota.get(kota_menginap[d]) for d in data["D"]}
 
     solusi = M.solusi_kosong(data)
     solusi["hotel"] = hotel
@@ -192,8 +207,38 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
             tiba, _, _ = M.jadwal_hari(data, urutan, d)
             solusi["tiba"].update(tiba)
 
-    # ---------- langkah 10: penilaian memakai skor terkoreksi per hari yang sebenarnya
-    hasil = M.fitness(data, solusi, anggaran, bobot, minimum_kategori, kategori_wajib)
+    return solusi
+
+
+def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
+                 minimum_kategori=None, kategori_wajib=None, cetak=False):
+    """Menjalankan Clarke-Wright Savings, sepuluh langkah subbab 2.5.
+
+    Urutan pengerjaannya tidak sama dengan urutan nomor langkahnya. Langkah 3,
+    pemenuhan cakupan kategori, dikerjakan paling akhir karena penyisipan
+    destinasi baru perlu tahu kuota waktu mana yang masih tersisa, dan itu baru
+    diketahui setelah hari ditetapkan di langkah 4.
+
+    Konstruksinya diulang untuk tiap pola kota menginap, lalu yang fitness-nya
+    terkecil dipakai. Itu padanan deterministik dari kunci malam pada PSO.
+
+    Mengembalikan dict berisi solusi, hasil penilaian, nilai fitness, runtime,
+    dan status validasi struktur.
+    """
+    mulai = time.perf_counter()
+    kunci = set(kunci or [])
+    tolak = set(tolak or [])
+
+    terbaik = None
+    for pola in _pola_menginap(data):
+        kandidat = _bangun_solusi(data, anggaran, bobot, kunci, tolak,
+                                  minimum_kategori, kategori_wajib, pola)
+        nilai = M.fitness(data, kandidat, anggaran, bobot,
+                          minimum_kategori, kategori_wajib)
+        if terbaik is None or nilai["F"] < terbaik[0]["F"] - M.TOLERANSI:
+            terbaik = (nilai, kandidat, pola)
+
+    hasil, solusi, _pola = terbaik
     ok, pesan = M.validasi_solusi(data, solusi, kunci, tolak)
 
     keluaran = {
