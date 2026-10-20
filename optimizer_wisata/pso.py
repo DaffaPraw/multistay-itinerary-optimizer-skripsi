@@ -9,6 +9,10 @@ Partikel tidak menyimpan itinerary, melainkan prioritas yang diterjemahkan jadi
 itinerary. Yang bergerak di ruang pencarian nilai kuncinya, dan itulah yang
 mengubah urutan, bukan sebaliknya.
 
+Kota tempat menginap tiap malam dipilih kunci malam tersendiri, terpisah dari
+kota destinasi hari itu. Dengan begitu menginap di satu kota sambil berwisata ke
+kota lain berada di dalam ruang pencarian.
+
 Persamaan: (2.20) fitness, (2.21) dan (2.22) pembaruan kecepatan dan posisi.
 """
 
@@ -36,6 +40,11 @@ SABAR = 20
 KUNCI_PEMBAGI = "pembagi_kota"
 
 
+def kunci_malam(d):
+    """Nama kunci pemilih kota tempat menginap pada malam ke-d."""
+    return ("malam", d)
+
+
 def _kunci_awal(data, rng):
     """Kunci prioritas tiap destinasi, tiap akomodasi, dan titik pembagi kota.
 
@@ -44,9 +53,17 @@ def _kunci_awal(data, rng):
     jumlah malam di tiap kota ikut dicari optimizer. Biaya akomodasi bergantung
     langsung pada pembagian itu, jadi menurunkannya dari kunci destinasi membuat
     pembagian hari buta terhadap harga hotel.
+
+    Kunci malam, satu untuk tiap malam, memilih kota tempat menginap terlepas
+    dari kota destinasi hari itu. Jumlahnya m, bukan |H| x m: yang dipilih kunci
+    ini hanya kotanya, sedangkan hotel mana di kota itu tetap ditentukan kunci
+    akomodasi. Versi |H| x m sudah pernah dicoba dan memperburuk hasil, karena
+    ruang pencariannya membesar tanpa panduan.
     """
     kunci = {n: rng.random() for n in data["P"] + data["H"]}
     kunci[KUNCI_PEMBAGI] = rng.random()
+    for d in data["D"]:
+        kunci[kunci_malam(d)] = rng.random()
     return kunci
 
 
@@ -99,11 +116,28 @@ def _rencana_kota(data, posisi):
     return {d: (urut[0] if d <= batas else urut[1]) for d in data["D"]}
 
 
-def _pilih_hotel(data, posisi, kota_hari):
-    """Akomodasi tiap malam, dari kunci akomodasi berkunci tertinggi di kota itu.
+def _kota_menginap(data, posisi):
+    """Kota tempat menginap tiap malam, dari kunci malam masing-masing.
 
-    Malam d mengikuti kota hari d, jadi wisatawan tidak pindah hotel selama masih
-    di kota yang sama.
+    Terpisah dari kota destinasi hari itu. Inilah yang membuat pola menginap di
+    satu kota sambil berwisata ke kota lain dapat diwakili.
+    """
+    kota = data["kota"]
+    if len(kota) == 1:
+        return {d: kota[0] for d in data["D"]}
+    hasil = {}
+    for d in data["D"]:
+        k = int(posisi[kunci_malam(d)] * len(kota))
+        hasil[d] = kota[min(k, len(kota) - 1)]
+    return hasil
+
+
+def _pilih_hotel(data, posisi, kota_menginap):
+    """Akomodasi tiap malam: kotanya dari kunci malam, hotelnya dari kunci akomodasi.
+
+    Kota tempat menginap tidak lagi mengikuti kota destinasi hari itu, sehingga
+    pengguna boleh tidur di satu kota sambil berwisata ke kota lain, dan boleh
+    berganti hotel antar malam.
     """
     node = data["node"]
     hotel = {}
@@ -113,7 +147,7 @@ def _pilih_hotel(data, posisi, kota_hari):
         if kandidat:
             terbaik_kota[k] = max(kandidat, key=lambda h: posisi[h])
     for d in data["D"]:
-        hotel[d] = terbaik_kota.get(kota_hari[d])
+        hotel[d] = terbaik_kota.get(kota_menginap[d])
     return hotel
 
 
@@ -135,7 +169,7 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
     node = data["node"]
 
     kota_hari = _rencana_kota(data, posisi)
-    hotel = _pilih_hotel(data, posisi, kota_hari)
+    hotel = _pilih_hotel(data, posisi, _kota_menginap(data, posisi))
 
     solusi = M.solusi_kosong(data)
     solusi["hotel"] = hotel
