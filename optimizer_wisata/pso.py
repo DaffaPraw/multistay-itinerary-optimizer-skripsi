@@ -13,6 +13,28 @@ Kota tempat menginap tiap malam dipilih kunci malam tersendiri, terpisah dari
 kota destinasi hari itu. Dengan begitu menginap di satu kota sambil berwisata ke
 kota lain berada di dalam ruang pencarian.
 
+Hasil opsi A, diputuskan 22 Oktober 2026 dan dipertahankan.
+
+Selisih terhadap optimum Gurobi, rata lima seed:
+
+    subset     sebelum    sesudah
+     8 dest    +8,830%    +0,397%
+    10 dest    +8,829%    +0,193%
+    12 dest    +0,526%    +0,459%
+
+Dataset penuh 90 destinasi, 15 seed:
+
+               sebelum     sesudah
+    rata       0,319683    0,319675
+    median     0,317593    0,317582
+    stdev      0,007523    0,006192
+    terbaik    0,311185    0,310677
+    terburuk   0,338581    0,332870
+
+Subset 12 nyaris tidak bergeser, dan itu memang diharapkan: optimumnya di situ
+berbentuk terbagi dua kota, jadi sudah terwakili sejak dulu. Pada dataset penuh
+mutunya tidak berubah sementara sebarannya menyempit.
+
 Persamaan: (2.20) fitness, (2.21) dan (2.22) pembaruan kecepatan dan posisi.
 """
 

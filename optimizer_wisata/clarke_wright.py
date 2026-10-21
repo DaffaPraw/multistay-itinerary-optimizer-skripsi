@@ -33,6 +33,16 @@ hari yang bersangkutan, dan nilai itulah yang masuk nilai objektif di langkah 10
 Kota tempat menginap tidak terikat kota destinasi hari itu. Karena metode ini
 deterministik dan tidak punya kunci acak seperti PSO, seluruh pola kota menginap
 yang mungkin dicoba lalu yang terbaik menurut fitness dipakai.
+
+Hasilnya, diputuskan 22 Oktober 2026 dan dipertahankan:
+
+    subset     sebelum    sesudah
+     8 dest    +9,606%    +0,271%
+    10 dest    +9,452%    +0,156%
+    12 dest    +1,102%    +1,102%
+
+    dataset penuh Rp3.000.000   0,373593 jadi 0,341085
+    dataset penuh Rp900.000     0,499043 jadi 0,409902
 """
 
 import time
