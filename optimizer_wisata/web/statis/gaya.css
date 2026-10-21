@@ -393,6 +393,99 @@ body {
   border-radius: var(--bulat-kecil); font-size: 13.5px; color: #7a5c17;
 }
 .peringatan ul { margin: 6px 0 0; padding-left: 18px; }
+/* ------------------------------------------------- jadwal / linimasa */
+.hari-judul { display: flex; align-items: center; gap: 12px; margin: 26px 0 16px; flex-wrap: wrap; }
+.hari-judul h2 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -0.02em; }
+.hari-cip { padding: 4px 12px; font-size: 12px; font-weight: 600; background: var(--krem-tua); color: var(--cokelat-tua); border-radius: 999px; }
+.hari-tandai { margin-left: auto; font-size: 12.5px; color: var(--tinta-lembut); }
+
+.linimasa { position: relative; padding-left: 34px; }
+.linimasa::before {
+  content: ""; position: absolute; left: 11px; top: 10px; bottom: 10px;
+  width: 2px; background: var(--krem-tua);
+}
+.simpul {
+  position: absolute; left: 0; width: 24px; height: 24px;
+  display: grid; place-items: center;
+  background: var(--gelap); color: #fff; border-radius: 50%;
+  font-size: 11px; border: 3px solid var(--latar);
+}
+
+.kartu-henti {
+  position: relative;
+  display: flex; gap: 16px; justify-content: space-between;
+  padding: 16px 18px; margin-bottom: 12px;
+  background: var(--kertas); border: 1px solid var(--garis);
+  border-radius: var(--bulat); box-shadow: var(--bayang);
+}
+.kartu-henti.destinasi { border-left: 3px solid var(--cokelat); }
+.kartu-henti.hotel { background: var(--krem); }
+.henti-kiri { min-width: 0; flex: 1; }
+.henti-cip {
+  display: inline-block; margin-bottom: 7px; margin-right: 6px;
+  padding: 2px 9px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase;
+  background: var(--krem-tua); color: var(--cokelat-tua); border-radius: 5px;
+}
+.henti-nama { margin: 0 0 7px; font-size: 16.5px; font-weight: 700; }
+.henti-tandai { display: flex; flex-wrap: wrap; gap: 6px; }
+.tandai {
+  padding: 3px 9px; font-size: 11.5px; color: var(--tinta-lembut);
+  background: var(--latar); border-radius: 6px;
+}
+.henti-catat { margin: 7px 0 0; font-size: 13px; color: var(--tinta-lembut); }
+
+.henti-kanan { flex: none; min-width: 148px; }
+.kotak-jam { padding: 11px 13px; background: var(--latar); border-radius: var(--bulat-kecil); }
+.kotak-jam div { display: flex; justify-content: space-between; gap: 14px; font-size: 13px; }
+.kotak-jam .jam-nilai { font-weight: 700; font-variant-numeric: tabular-nums; }
+.kotak-jam .pisah { margin: 7px 0; height: 1px; background: var(--garis); }
+.kotak-jam .kecil { font-size: 12px; color: var(--tinta-lembut); }
+
+.kendali { display: flex; gap: 6px; margin-top: 10px; }
+.kendali button {
+  flex: 1; padding: 6px 8px;
+  font: inherit; font-size: 11.5px; font-weight: 600;
+  color: var(--tinta-lembut); background: var(--kertas);
+  border: 1px solid var(--garis); border-radius: 7px; cursor: pointer;
+}
+.kendali button:hover { border-color: var(--cokelat); color: var(--cokelat-tua); }
+.kendali button.nyala { background: var(--gelap); border-color: var(--gelap); color: #fff; }
+.kendali button.tolak.nyala { background: var(--merah); border-color: var(--merah); }
+
+.ruas {
+  display: flex; justify-content: center; margin: -4px 0 12px;
+}
+.ruas span {
+  padding: 5px 14px; font-size: 12px; color: var(--tinta-lembut);
+  background: var(--kertas); border: 1px solid var(--garis); border-radius: 999px;
+}
+.ruas.antarkota span {
+  background: var(--krem-tua); border-color: #e4d5c5; color: var(--cokelat-tua); font-weight: 600;
+}
+
+.susun-ulang {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 16px 18px; margin: 20px 0 6px;
+  background: var(--gelap); color: #fff; border-radius: var(--bulat);
+}
+.susun-ulang p { margin: 0; flex: 1; min-width: 200px; font-size: 13.5px; color: rgba(255,255,255,.85); }
+.susun-ulang .tombol-hitam { background: #fff; color: #121212; }
+.susun-ulang .tombol-hitam:hover { background: var(--krem); }
+
+/* ------------------------------------------------- tidak dipilih */
+.tolak-daftar { margin-top: 10px; }
+.tolak-baris {
+  display: flex; gap: 14px; align-items: center; justify-content: space-between;
+  padding: 11px 14px; border-bottom: 1px solid var(--garis-tipis); font-size: 13.5px;
+}
+.tolak-baris:last-child { border-bottom: 0; }
+.tolak-baris .alasan { font-size: 12px; color: var(--tinta-samar); }
+.tolak-baris .kanan { display: flex; align-items: center; gap: 10px; flex: none; }
+
+/* ------------------------------------------------- peta */
+.peta { height: 460px; border: 1px solid var(--garis); border-radius: var(--bulat); background: var(--kertas); z-index: 0; }
+
 /* ---------------------------------------------------------------- kaki */
 .kaki {
   padding: 26px 0 36px;

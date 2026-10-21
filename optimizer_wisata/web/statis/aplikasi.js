@@ -8,6 +8,7 @@ const el = (id) => document.getElementById(id);
 const WARNA = ["#a27c57", "#2b3b44", "#2f7d57", "#a8402c", "#5b4a8c"];
 
 let keterangan = null;
+let peta = null, lapisan = null;
 let bungkusHasil = null;
 let kunciAktif = null;
 // Diisi kendali kunci dan tolak pada halaman hasil; sampai itu ada keduanya
@@ -330,8 +331,10 @@ function gambarSatu() {
                                      : "melampaui " + rupiah(-sisa)}</div>
     </div>`;
 
+  gambarJadwal(h);
   gambarBiaya(h);
   gambarTeknis(h);
+  if (!el("isi-peta").classList.contains("sembunyi")) gambarPeta(h);
 }
 
 // ---------------------------------------------------------- tab jadwal
@@ -401,7 +404,154 @@ function gambarTeknis(h) {
       ? `<p class="bantu">${h.validasi_pesan.map(aman).join("<br>")}</p>` : ""}`;
 }
 
+function gambarJadwal(h) {
+  const pesan = [...(h.pesan || []), ...(bungkusHasil.catatan || [])];
+  let html = pesan.length
+    ? `<div class="peringatan"><strong>Catatan</strong><ul>${
+        pesan.map((p) => `<li>${aman(p)}</li>`).join("")}</ul></div>`
+    : "";
+
+  html += h.hari.map((hari) => {
+    if (!hari.perhentian.length) {
+      return `<div class="hari-judul"><h2>Hari ${hari.hari}</h2>
+        <span class="hari-cip">${tanggalIndo(hari.tanggal)}</span></div>
+        <p class="bantu">Tidak ada kunjungan pada hari ini.</p>`;
+    }
+    const pakai = hari.selesai !== null ? hari.selesai - hari.mulai : 0;
+    let isi = `<div class="hari-judul">
+        <h2>Hari ${hari.hari}</h2>
+        <span class="hari-cip">${tanggalIndo(hari.tanggal)}</span>
+        <span class="hari-tandai">${Math.round(pakai)} dari ${hari.kuota} menit
+          &middot; ${hari.jarak_km} km</span>
+      </div><div class="linimasa">`;
+
+    hari.perhentian.forEach((t, i) => {
+      isi += t.peran === "akomodasi" ? kartuHotel(t, hari) : kartuDestinasi(t);
+      if (t.ruas && i < hari.perhentian.length - 1) {
+        isi += `<div class="ruas ${t.ruas.antarkota ? "antarkota" : ""}"><span>${
+          t.ruas.antarkota
+            ? `&#128652; Perpindahan antarkota: ${aman(t.ruas.dari_kota)} &rarr; ${aman(t.ruas.ke_kota)} (${Math.round(t.ruas.menit)} mnt, ${t.ruas.km} km)`
+            : `&#128663; ${Math.round(t.ruas.menit)} mnt &middot; ${t.ruas.km} km`
+        }</span></div>`;
+      }
+    });
+    return isi + "</div>";
+  }).join("");
+
+  el("isi-jadwal").innerHTML = html;
+
+}
+
+function kartuHotel(t, hari) {
+  const awal = t.ujung === "awal";
+  return `<div class="kartu-henti hotel">
+    <span class="simpul">&#127976;</span>
+    <div class="henti-kiri">
+      <span class="henti-cip">${awal ? "Titik awal" : `Titik akhir hari ${hari.hari}`}</span>
+      <span class="henti-cip">${jam(awal ? t.pergi : t.tiba)}</span>
+      <h3 class="henti-nama">${aman(t.nama)}</h3>
+      <div class="henti-tandai">
+        <span class="tandai">${aman(t.kota)}</span>
+        ${t.harga_malam ? `<span class="tandai">${rupiah(t.harga_malam)} / malam</span>` : ""}
+      </div>
+      <p class="henti-catat">${awal
+        ? "Berangkat dari akomodasi ini."
+        : "Menginap untuk melanjutkan perjalanan esok hari."}</p>
+    </div></div>`;
+}
+
+function kartuDestinasi(t) {
+  return `<div class="kartu-henti destinasi">
+    <div class="henti-kiri">
+      <span class="henti-cip">${aman(t.kategori)}</span>
+      <h3 class="henti-nama">${aman(t.nama)}</h3>
+      <div class="henti-tandai">
+        ${t.sifat ? `<span class="tandai">${aman(t.sifat)}</span>` : ""}
+        <span class="tandai">&#9201; ${durasiTeks(t.durasi)}</span>
+        <span class="tandai">skor ${t.skor.toFixed(2)}</span>
+      </div>
+    </div>
+    <div class="henti-kanan">
+      <div class="kotak-jam">
+        <div><span class="kecil">ETA</span><span class="jam-nilai">${jam(t.tiba)}</span></div>
+        <div><span class="kecil">ETD</span><span class="jam-nilai">${jam(t.pergi)}</span></div>
+        <div class="pisah"></div>
+        <div><span class="kecil">Tiket</span>
+          <span class="jam-nilai">${t.tiket ? rupiah(t.tiket) : "Gratis"}</span></div>
+      </div>
+    </div></div>`;
+}
+
+function gambarPeta(h) {
+  if (typeof L === "undefined") {
+    el("peta").innerHTML =
+      '<p class="bantu" style="padding:20px">Peta tidak dapat dimuat.</p>';
+    return;
+  }
+  if (peta === null) {
+    peta = L.map("peta", { scrollWheelZoom: false });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap", maxZoom: 18,
+    }).addTo(peta);
+  }
+  if (lapisan) peta.removeLayer(lapisan);
+  lapisan = L.layerGroup().addTo(peta);
+
+  const semua = [];
+  h.hari.forEach((hari, i) => {
+    const warna = WARNA[i % WARNA.length];
+    const titik = hari.perhentian.map((t) => [t.lat, t.lon]);
+    if (titik.length < 2) return;
+    semua.push(...titik);
+    L.polyline(titik, { color: warna, weight: 3, opacity: .8 }).addTo(lapisan);
+
+    let urut = 0;
+    hari.perhentian.forEach((t) => {
+      const hotel = t.peran === "akomodasi";
+      if (!hotel) urut += 1;
+      const tanda = hotel
+        ? L.divIcon({ className: "", iconSize: [22, 22],
+            html: `<div style="width:22px;height:22px;border-radius:50%;
+              background:#2b3b44;color:#fff;display:grid;place-items:center;
+              font:700 11px/1 sans-serif;border:2px solid #fff;
+              box-shadow:0 1px 4px rgba(0,0,0,.3)">&#9733;</div>` })
+        : L.divIcon({ className: "", iconSize: [22, 22],
+            html: `<div style="width:22px;height:22px;border-radius:50%;
+              background:${warna};color:#fff;display:grid;place-items:center;
+              font:700 11px/1 sans-serif;border:2px solid #fff;
+              box-shadow:0 1px 4px rgba(0,0,0,.3)">${urut}</div>` });
+      L.marker([t.lat, t.lon], { icon: tanda }).bindPopup(
+        `<strong>${aman(t.nama)}</strong><br>Hari ${hari.hari}` +
+        (hotel ? " &middot; akomodasi"
+               : `<br>${aman(t.kategori)}${t.sifat ? " &middot; " + aman(t.sifat) : ""}` +
+                 `<br>${jam(t.tiba)} &ndash; ${jam(t.pergi)} (${durasiTeks(t.durasi)})` +
+                 `<br>${t.tiket ? rupiah(t.tiket) : "gratis"}`)
+      ).addTo(lapisan);
+    });
+  });
+
+  el("peta-ket").innerHTML = h.hari.map((hari, i) =>
+    `<span class="tandai" style="border-left:3px solid ${WARNA[i % WARNA.length]}">
+      Hari ${hari.hari}</span>`).join(" ") +
+    " &nbsp; Bintang menandai akomodasi, angka menandai urutan kunjungan.";
+
+  if (semua.length) peta.fitBounds(L.latLngBounds(semua).pad(.12));
+  else peta.setView([-7.2, 110.6], 9);
+  setTimeout(() => peta.invalidateSize(), 60);
+}
+
 // ------------------------------------------------------------ pemasangan
+el("tab").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-tab]");
+  if (!b) return;
+  [...el("tab").children].forEach((x) => x.classList.toggle("aktif", x === b));
+  const nama = b.dataset.tab;
+  for (const n of ["jadwal", "peta", "biaya"]) {
+    el("isi-" + n).classList.toggle("sembunyi", n !== nama);
+  }
+  if (nama === "peta" && bungkusHasil) gambarPeta(bungkusHasil.hasil[kunciAktif]);
+});
+
 el("formulir").addEventListener("submit", kirim);
 
 muatKeterangan().catch((g) =>

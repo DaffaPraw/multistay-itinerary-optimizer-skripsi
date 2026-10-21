@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="/statis/gaya.css">
 </head>
 <body>
@@ -231,7 +232,20 @@
 
     <div class="statistik" id="statistik"></div>
 
-    <div id="isi-biaya" class="isi-tab"></div>
+    <div class="tab" id="tab">
+      <button data-tab="jadwal" class="aktif">&#9776; Jadwal</button>
+      <button data-tab="peta">&#128506; Peta Rute</button>
+      <button data-tab="biaya">&#129534; Rincian Biaya</button>
+    </div>
+
+    <div id="isi-jadwal" class="isi-tab"></div>
+
+    <div id="isi-peta" class="isi-tab sembunyi">
+      <div id="peta" class="peta"></div>
+      <p class="bantu" id="peta-ket"></p>
+    </div>
+
+    <div id="isi-biaya" class="isi-tab sembunyi"></div>
 
     <details class="kartu-blok teknis">
       <summary>&#9879; Detail Teknis Optimasi</summary>
@@ -247,6 +261,7 @@
   </div>
 </footer>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/statis/aplikasi.js"></script>
 </body>
 </html>
