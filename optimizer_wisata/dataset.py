@@ -130,6 +130,24 @@ KECEPATAN_ANTARKOTA_KMJAM = 55.0
 
 RADIUS_BUMI_KM = 6371.0
 
+# Faktor kemacetan. Profil driving-car OpenRouteService mengembalikan waktu arus
+# bebas: memakai batas kecepatan jalan, tanpa memodelkan kemacetan, lampu merah,
+# maupun antrean persimpangan. Diukur pada matriks 120 node, kecepatan tersirat
+# rata-rata 44,5 km/jam di dalam kota dan 71,7 km/jam antar kota. Keduanya jauh
+# di atas keadaan Semarang dan Surakarta yang padat.
+#
+# Faktornya diturunkan, bukan dikarang: dipilih supaya kecepatan rata-rata
+# tersirat sesudah dikalikan sama dengan asumsi yang sudah dipakai proyek ini,
+# yaitu 55 km/jam antar kota sebagaimana Tabel 2.9 dan 25 km/jam di dalam kota.
+#
+#     dalam kota   44,5 / 25 = 1,78
+#     antar kota   71,7 / 55 = 1,30
+#
+# Hanya waktu tempuh yang dikalikan. Jarak tidak berubah karena kemacetan tidak
+# memperpanjang rute, dan biaya bahan bakar tetap diturunkan dari jarak.
+FAKTOR_MACET_KOTA = 1.78
+FAKTOR_MACET_ANTARKOTA = 1.30
+
 
 def _teks(nilai):
     return "" if nilai is None else str(nilai).strip()
@@ -405,6 +423,10 @@ def bangun_matriks(node, lapor=False, sumber=None):
     cadangan: berkas matriks belum ada, node tidak termuat di dalamnya, atau
     pasangannya dilaporkan tidak terjangkau jaringan jalan.
 
+    Waktu tempuh dari OpenRouteService dikalikan faktor kemacetan lebih dulu,
+    karena profil driving-car mengembalikan waktu arus bebas. Jaraknya tidak
+    dikalikan.
+
     Penting: matriks jaringan jalan tidak simetris, jadi seluruh pasangan berarah
     disimpan. Jangan dioptimasi lagi jadi pencerminan separuh pasangan seperti
     versi taksiran koordinat; pada dataset ini 13.902 dari 14.280 pasangan
@@ -437,7 +459,13 @@ def bangun_matriks(node, lapor=False, sumber=None):
                 if a is not None and b is not None:
                     km = matriks["jarak_km"][a][b]
                     detik = matriks["durasi_detik"][a][b]
-                    menit = None if detik is None else detik / 60.0
+                    if detik is None:
+                        menit = None
+                    else:
+                        macet = (FAKTOR_MACET_KOTA
+                                 if node[u]["kota"] == node[v]["kota"]
+                                 else FAKTOR_MACET_ANTARKOTA)
+                        menit = detik / 60.0 * macet
             if km is None or menit is None:
                 km, menit, rupiah = _pasangan_haversine(node, u, v)
                 dari_cadangan += 1
@@ -646,6 +674,7 @@ def cetak_ringkasan(data_path=DATA_PATH):
     s_bar = data["s_bar"]
     print(f"skor terkoreksi   : rata {sum(s_bar.values()) / len(s_bar):.2f}  (w={data['cuaca_aktif']})")
     print(f"sumber matriks    : {SUMBER_MATRIKS}")
+    print(f"faktor kemacetan  : {FAKTOR_MACET_KOTA} dalam kota, {FAKTOR_MACET_ANTARKOTA} antar kota")
     delta = data["delta"]
     dalam = [v for (u, w), v in delta.items()
              if u != w and node[u]["kota"] == node[w]["kota"]]
