@@ -482,7 +482,33 @@ function kartuDestinasi(t) {
     </div></div>`;
 }
 
-function gambarPeta(h) {
+// Geometri jalan per bungkus hasil, supaya berpindah tab tidak menarik ulang.
+const simpananGeometri = new Map();
+
+async function ambilGeometri(h) {
+  const kunci = h.hari.map((d) =>
+    d.perhentian.map((t) => `${t.lon.toFixed(5)},${t.lat.toFixed(5)}`).join(";")
+  ).join("|");
+  if (simpananGeometri.has(kunci)) return simpananGeometri.get(kunci);
+  try {
+    const r = await fetch("/api/geometri", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hari: h.hari.map((d) => d.perhentian.map((t) => [t.lon, t.lat])),
+      }),
+    });
+    const j = await r.json();
+    const g = j.hari || null;
+    simpananGeometri.set(kunci, g);
+    return g;
+  } catch (_) {
+    simpananGeometri.set(kunci, null);
+    return null;
+  }
+}
+
+async function gambarPeta(h) {
   if (typeof L === "undefined") {
     el("peta").innerHTML =
       '<p class="bantu" style="padding:20px">Peta tidak dapat dimuat.</p>';
@@ -497,13 +523,21 @@ function gambarPeta(h) {
   if (lapisan) peta.removeLayer(lapisan);
   lapisan = L.layerGroup().addTo(peta);
 
+  // Geometri jalan sebenarnya. Hari yang gagal diambil digambar sebagai garis
+  // lurus antar perhentian, supaya peta tetap terbaca.
+  const geometri = await ambilGeometri(h);
+
   const semua = [];
   h.hari.forEach((hari, i) => {
     const warna = WARNA[i % WARNA.length];
     const titik = hari.perhentian.map((t) => [t.lat, t.lon]);
     if (titik.length < 2) return;
     semua.push(...titik);
-    L.polyline(titik, { color: warna, weight: 3, opacity: .8 }).addTo(lapisan);
+    const jalan = geometri && geometri[i];
+    L.polyline(jalan || titik, {
+      color: warna, weight: jalan ? 4 : 3, opacity: .8,
+      dashArray: jalan ? null : "6 6",
+    }).addTo(lapisan);
 
     let urut = 0;
     hari.perhentian.forEach((t) => {

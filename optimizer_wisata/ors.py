@@ -4,6 +4,10 @@ Pengambilan matriks jarak dan waktu tempuh dari OpenRouteService.
 Memakai endpoint matrix, bukan directions: satu permintaan mengembalikan satu blok
 pasangan sekaligus, jadi 14.280 pasangan pada 120 node cukup lima permintaan.
 
+Endpoint directions dipakai terpisah oleh ambil_geometri, yaitu ketika halaman
+hasil perlu menggambar rute yang benar-benar dilalui di peta. Itu tidak dipakai
+menyusun matriks karena 14.280 pasangan berarti 14.280 permintaan.
+
 Penting: hasilnya tidak simetris. Rute u->v bisa beda panjang dari v->u karena
 arah jalan dan larangan putar balik, jadi semua pasangan berarah harus diambil.
 
@@ -26,6 +30,7 @@ import dataset as DS
 
 # -- pengaturan --
 URL = "https://api.openrouteservice.org/v2/matrix/driving-car"
+URL_RUTE = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
 PROFIL = "driving-car"
 
 # Batas layanan pada paket gratis adalah 3.500 pasangan berarah per permintaan,
@@ -96,6 +101,49 @@ def _minta(kunci, lokasi, sumber, tujuan, percobaan=4):
                 continue
             raise RuntimeError(f"Sambungan ke OpenRouteService gagal: {galat.reason}")
     raise RuntimeError("Permintaan OpenRouteService gagal setelah beberapa percobaan.")
+
+
+def ambil_geometri(koordinat, percobaan=3):
+    """Geometri jalan yang benar-benar dilalui untuk satu rangkaian perhentian.
+
+    Memakai endpoint directions, bukan matrix. Seluruh perhentian satu hari
+    dikirim sekali sebagai daftar titik singgah, jadi satu hari cukup satu
+    permintaan, bukan satu permintaan per ruas.
+
+    Masukan dan keluaran keduanya [bujur, lintang] mengikuti GeoJSON. Pemanggil
+    yang memerlukan [lintang, bujur] membaliknya sendiri.
+
+    Mengembalikan None bila layanan menolak, supaya pemanggil dapat jatuh kembali
+    ke garis lurus antar perhentian.
+    """
+    if len(koordinat) < 2:
+        return None
+    kunci = ambil_kunci()
+    muatan = json.dumps({"coordinates": koordinat}).encode("utf8")
+    permintaan = urllib.request.Request(URL_RUTE, data=muatan, method="POST")
+    permintaan.add_header("Authorization", kunci)
+    permintaan.add_header("Content-Type", "application/json")
+    permintaan.add_header("Accept", "application/geo+json")
+
+    tunggu = JEDA_DETIK
+    for ke in range(percobaan):
+        try:
+            with urllib.request.urlopen(permintaan, timeout=60) as tanggapan:
+                isi = json.loads(tanggapan.read().decode("utf8"))
+            return isi["features"][0]["geometry"]["coordinates"]
+        except urllib.error.HTTPError as galat:
+            if galat.code in (429, 503) and ke < percobaan - 1:
+                tunggu *= 2
+                time.sleep(tunggu)
+                continue
+            return None
+        except (urllib.error.URLError, KeyError, IndexError, TimeoutError):
+            if ke < percobaan - 1:
+                tunggu *= 2
+                time.sleep(tunggu)
+                continue
+            return None
+    return None
 
 
 def ambil_matriks(node, lapor=True):

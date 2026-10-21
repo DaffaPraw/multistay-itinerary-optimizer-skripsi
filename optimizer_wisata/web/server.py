@@ -3,7 +3,7 @@ Peladen antarmuka web untuk optimizer itinerary.
 
 Peladen ini memakai http.server dari pustaka standar, bukan kerangka kerja web.
 Alasannya dua. Pertama, kebutuhannya memang kecil, yaitu menyajikan satu halaman
-dan tiga endpoint. Kedua, ketergantungan pihak ketiga pada program ini sengaja
+dan beberapa endpoint. Kedua, ketergantungan pihak ketiga pada program ini sengaja
 dijaga tetap dua, yaitu openpyxl untuk membaca dataset dan gurobipy untuk MILP,
 sehingga program dapat dijalankan penguji tanpa memasang apa pun selain Gurobi.
 
@@ -37,6 +37,7 @@ if AKAR not in sys.path:
     sys.path.insert(0, AKAR)
 
 import clarke_wright as CWS          # noqa: E402
+import ors as ORS                    # noqa: E402
 import dataset as DS                 # noqa: E402
 import model as M                    # noqa: E402
 import pso as PSO                    # noqa: E402
@@ -55,6 +56,11 @@ JENIS = {
 # ---------------------------------------------------------------- simpanan
 _kunci_data = threading.Lock()
 _simpanan_data = {}
+
+# Geometri rute disimpan supaya membuka tab peta berulang kali tidak
+# menghabiskan kuota OpenRouteService. Kuncinya rangkaian koordinatnya.
+_kunci_geometri = threading.Lock()
+_simpanan_geometri = {}
 
 _kunci_kerja = threading.Lock()
 _kerja = {}
@@ -354,6 +360,42 @@ def mulai_kerja(permintaan):
     return kerja_id
 
 
+def geometri_rute(hari):
+    """Geometri jalan untuk tiap hari, diambil dari OpenRouteService.
+
+    Masukan daftar per hari berisi [bujur, lintang] tiap perhentian. Keluaran
+    daftar per hari berisi [lintang, bujur] mengikuti urutan yang sama, siap
+    dipakai Leaflet.
+
+    Hari yang gagal diambil dikembalikan sebagai None, dan halaman menggambar
+    garis lurus antar perhentian sebagai gantinya. Peta yang kurang tepat lebih
+    baik daripada peta yang kosong.
+    """
+    hasil = []
+    for titik in hari:
+        if not titik or len(titik) < 2:
+            hasil.append(None)
+            continue
+        kunci = json.dumps(titik, separators=(",", ":"))
+        with _kunci_geometri:
+            tersimpan = _simpanan_geometri.get(kunci)
+        if tersimpan is not None:
+            hasil.append(tersimpan)
+            continue
+        garis = ORS.ambil_geometri(titik)
+        if garis is None:
+            # Kegagalan tidak disimpan. Kalau layanannya yang sedang bermasalah,
+            # menyimpan None berarti hari itu selamanya digambar garis lurus
+            # selama peladen hidup.
+            hasil.append(None)
+            continue
+        balik = [[t[1], t[0]] for t in garis]
+        with _kunci_geometri:
+            _simpanan_geometri[kunci] = balik
+        hasil.append(balik)
+    return hasil
+
+
 # ---------------------------------------------------------------- keterangan
 def _tanggal_awal():
     """Tanggal pertama yang tersedia pada data cuaca, dipakai sebagai awal perjalanan."""
@@ -458,7 +500,8 @@ class Penangan(BaseHTTPRequestHandler):
 
     # -------------------------------------------------- POST
     def do_POST(self):                              # noqa: N802
-        if urlparse(self.path).path != "/api/jalankan":
+        jalur = urlparse(self.path).path
+        if jalur not in ("/api/jalankan", "/api/geometri"):
             self._balas_json({"galat": "jalur tidak dikenal"}, 404)
             return
         panjang = int(self.headers.get("Content-Length") or 0)
@@ -469,6 +512,12 @@ class Penangan(BaseHTTPRequestHandler):
             permintaan = json.loads(self.rfile.read(panjang).decode("utf8") or "{}")
         except json.JSONDecodeError as galat:
             self._balas_json({"galat": f"muatan bukan JSON: {galat}"}, 400)
+            return
+        if jalur == "/api/geometri":
+            try:
+                self._balas_json({"hari": geometri_rute(permintaan.get("hari") or [])})
+            except Exception as galat:              # noqa: BLE001
+                self._balas_json({"galat": str(galat)}, 500)
             return
         self._balas_json({"id": mulai_kerja(permintaan)}, 202)
 
