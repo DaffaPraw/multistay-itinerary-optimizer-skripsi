@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Itinerary Planner PSO CWS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/statis/gaya.css">
+</head>
+<body>
+
+<header class="kepala">
+  <div class="bungkus kepala-isi">
+    <div class="merek">Itinerary Planner PSO CWS</div>
+    <nav class="nav">
+      <a href="#" data-pindah="beranda" class="aktif">Beranda</a>
+      <a href="#" data-pindah="rencana">Buat Itinerary</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ======================================================= BERANDA -->
+<section id="layar-beranda" class="layar">
+  <div class="hero">
+    <div class="bungkus">
+      <h1 class="hero-judul">Rencana jalan-jalan yang disusun<br>bukan dengan kira-kira</h1>
+      <p class="hero-sub">
+        Semarang dan Surakarta/Solo. Destinasi, akomodasi, dan rute harian disusun
+        sekaligus dengan mempertimbangkan anggaran, jam operasional, waktu tempuh,
+        dan kondisi cuaca.
+      </p>
+      <button class="tombol-hitam" data-pindah="rencana">Buat Itinerary</button>
+    </div>
+  </div>
+
+  <div class="bungkus langkah-bungkus">
+    <div class="langkah">
+      <div class="langkah-item">
+        <div class="langkah-ikon">&#9881;</div>
+        <h3>1. Masukkan Preferensi</h3>
+        <p>Tentukan kota, durasi, anggaran, dan kategori yang kamu minati.</p>
+      </div>
+      <div class="langkah-garis"></div>
+      <div class="langkah-item">
+        <div class="langkah-ikon">&#9881;</div>
+        <h3>2. Sistem Menyusun Rute</h3>
+        <p>Particle Swarm Optimization memilih destinasi, akomodasi, dan urutan kunjungan.</p>
+      </div>
+      <div class="langkah-garis"></div>
+      <div class="langkah-item">
+        <div class="langkah-ikon">&#128197;</div>
+        <h3>3. Lihat Itinerary Harian</h3>
+        <p>Jadwal siap pakai lengkap dengan jam, biaya, dan peta rute.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="bungkus pita-angka" id="pita-angka"></div>
+</section>
+
+<section id="layar-rencana" class="layar sembunyi">
+  <div class="bungkus">
+    <h1 class="judul-halaman">Aturkan preferensi</h1>
+
+    <form id="formulir" autocomplete="off" class="rencana-tata">
+      <div class="rencana-kiri">
+
+        <div class="kartu-blok">
+          <h2 class="blok-judul"><span class="blok-ikon">&#128205;</span> Destinasi</h2>
+          <label class="label-kecil">Pilih wilayah Jawa Tengah</label>
+          <div id="pilihan-kota" class="pilih-kota"></div>
+          <p class="bantu" id="bantu-kota"></p>
+        </div>
+
+        <div class="kartu-blok">
+          <h2 class="blok-judul"><span class="blok-ikon">&#128197;</span> Jadwal &amp; Waktu</h2>
+          <div class="dua-kolom">
+            <div>
+              <label class="label-kecil">Tanggal mulai</label>
+              <input type="text" id="tanggal" class="kolom" readonly>
+              <p class="bantu">Mengikuti rentang data cuaca yang tersedia.</p>
+            </div>
+            <div>
+              <label class="label-kecil">Jumlah hari</label>
+              <div class="pencacah">
+                <button type="button" class="cacah" data-ubah="-1">&minus;</button>
+                <input type="number" id="hari" value="3" min="1" max="7" readonly>
+                <button type="button" class="cacah" data-ubah="1">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="dua-kolom">
+            <div>
+              <label class="label-kecil">Waktu mulai harian</label>
+              <input type="text" id="jam-mulai" class="kolom" readonly>
+            </div>
+            <div>
+              <label class="label-kecil">Waktu selesai harian</label>
+              <input type="text" id="jam-selesai" class="kolom" readonly>
+            </div>
+          </div>
+          <p class="bantu">
+            Jam aktivitas ditetapkan model sebagai parameter tetap pada Tabel 2.9 dan
+            belum dapat diubah pengguna.
+          </p>
+        </div>
+
+        <div class="kartu-blok">
+          <h2 class="blok-judul"><span class="blok-ikon">&#128181;</span> Anggaran &amp; Minat</h2>
+          <label class="label-kecil">Anggaran maksimal (Rp) untuk seluruh perjalanan</label>
+          <div class="rupiah">
+            <span class="awalan">Rp</span>
+            <input type="text" id="anggaran" value="3.000.000" inputmode="numeric" class="kolom">
+          </div>
+          <label class="label-kecil" style="margin-top:18px">Kategori destinasi</label>
+          <p class="bantu" style="margin-top:-4px">
+            Centang kategori yang diminati, lalu tentukan berapa destinasi paling
+            sedikit yang harus muncul dari kategori itu. Tanpa centang, seluruh
+            kategori dianggap boleh.
+          </p>
+          <div id="pilihan-kategori" class="kategori-kisi"></div>
+        </div>
+
+        <details class="kartu-blok lanjutan">
+          <summary>Pilihan lanjutan</summary>
+          <div class="dua-kolom" style="margin-top:14px">
+            <div>
+              <label class="label-kecil">Metode</label>
+              <select id="metode" class="kolom">
+                <option value="pso" selected>Particle Swarm Optimization</option>
+                <option value="cws">Clarke-Wright Savings</option>
+                <option value="banding">Bandingkan keduanya</option>
+              </select>
+            </div>
+            <div>
+              <label class="label-kecil">Seed</label>
+              <input type="number" id="seed" value="42" min="1" max="9999" class="kolom">
+              <p class="bantu">Seed berbeda menghasilkan rencana berbeda.</p>
+            </div>
+          </div>
+          <div class="dua-kolom">
+            <div>
+              <label class="label-kecil">Profil bobot</label>
+              <select id="profil" class="kolom"></select>
+              <p class="bantu">Bawaannya menjalankan ketiganya. Satu profil hanya
+                dipakai ketika menguji, karena hasilnya tidak dapat dibandingkan
+                antar profil.</p>
+            </div>
+            <div></div>
+          </div>
+        </details>
+
+      </div>
+
+      <!-- ringkasan melekat -->
+      <aside class="rencana-kanan">
+        <div class="kartu-blok ringkas-kartu">
+          <h2 class="ringkas-judul">Ringkasan Itinerary</h2>
+          <dl class="ringkas-daftar">
+            <div><dt>Destinasi</dt><dd id="r-kota">Menunggu pilihan</dd></div>
+            <div><dt>Durasi</dt><dd id="r-hari">3 Hari</dd></div>
+            <div><dt>Waktu aktivitas</dt><dd id="r-jam">08.00 - 18.00</dd></div>
+            <div><dt>Anggaran</dt><dd id="r-anggaran">Rp3.000.000</dd></div>
+          </dl>
+          <div class="ringkas-fokus">
+            <span class="ringkas-label">Fokus utama</span>
+            <div id="r-fokus" class="cip-baris"><span class="cip">Semua kategori</span></div>
+          </div>
+
+          <div class="ringkas-fokus">
+            <span class="ringkas-label">Yang akan disusun</span>
+            <div id="daftar-profil" class="cip-baris"></div>
+          </div>
+
+          <button type="submit" class="tombol-hitam penuh" id="tombol-jalan">
+            Buat Itinerary Sekarang &rarr;
+          </button>
+          <p class="bantu tengah" id="keterangan-dataset"></p>
+        </div>
+      </aside>
+    </form>
+  </div>
+</section>
+
+<section id="layar-galat" class="layar sembunyi">
+  <div class="bungkus">
+    <div class="galat" id="galat-isi"></div>
+    <button class="tombol-garis" data-pindah="rencana">Kembali ke preferensi</button>
+  </div>
+</section>
+
+<footer class="kaki">
+  <div class="bungkus">
+    Daffa Prawira &middot; 535220199 &middot; Teknik Informatika, Universitas Tarumanagara
+  </div>
+</footer>
+
+<script src="/statis/aplikasi.js"></script>
+</body>
+</html>

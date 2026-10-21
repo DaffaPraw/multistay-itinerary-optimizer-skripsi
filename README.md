@@ -30,6 +30,7 @@ kapasitas kendaraan membatasi muatan per rute.
 | `optimizer_wisata/gambar_rute.py` | gambar ulang Gambar 2.3, 2.5, dan 2.7 dari hasil |
 | `optimizer_wisata/ors.py` | pengambilan matriks jarak dari OpenRouteService |
 | `optimizer_wisata/eksperimen.py` | percobaan bertingkat, akurasi dan perilaku 30 seed |
+| `optimizer_wisata/web/` | antarmuka web, peladen `http.server` |
 | `optimizer_wisata/milp_gurobi.py` | MILP Gurobi, acuan solusi optimal pada subset kecil |
 
 Node tidak lagi depot dan pelanggan, melainkan 90 destinasi wisata dan 30
