@@ -184,10 +184,60 @@
   </div>
 </section>
 
+<section id="layar-proses" class="layar sembunyi">
+  <div class="bungkus proses-bungkus">
+    <div class="pemutar"></div>
+    <h2 id="tahap">menyiapkan</h2>
+    <div class="bilah"><div class="bilah-isi" id="bilah-isi"></div></div>
+    <ol class="tahap-daftar" id="tahap-daftar">
+      <li data-tahap="masukan">Memeriksa masukan</li>
+      <li data-tahap="dataset">Memuat dataset dan matriks rute</li>
+      <li data-tahap="optimasi">Menjalankan optimasi</li>
+      <li data-tahap="selesai">Menyusun jadwal</li>
+    </ol>
+    <p class="bantu tengah">
+      Pencarian berjalan di peladen. Halaman ini menanyakan kemajuannya setiap detik.
+    </p>
+  </div>
+</section>
+
 <section id="layar-galat" class="layar sembunyi">
   <div class="bungkus">
     <div class="galat" id="galat-isi"></div>
     <button class="tombol-garis" data-pindah="rencana">Kembali ke preferensi</button>
+  </div>
+</section>
+
+<section id="layar-hasil" class="layar sembunyi">
+  <div class="bungkus">
+
+    <div class="pita-berhasil" id="pita-berhasil">
+      <span class="centang">&#10003;</span>
+      <div>
+        <strong id="pita-judul">Itinerary Berhasil Dibuat!</strong>
+        <p id="pita-teks">Jadwal perjalanan telah disusun.</p>
+      </div>
+    </div>
+
+    <div class="hasil-kepala">
+      <div>
+        <h1 class="judul-halaman rapat">Itinerary Anda</h1>
+        <p class="hasil-sub" id="hasil-sub"></p>
+      </div>
+      <button class="tombol-garis" data-pindah="rencana">&#9998; Ubah Parameter</button>
+    </div>
+
+    <div id="profil-bar" class="profil-bar sembunyi"></div>
+
+    <div class="statistik" id="statistik"></div>
+
+    <div id="isi-biaya" class="isi-tab"></div>
+
+    <details class="kartu-blok teknis">
+      <summary>&#9879; Detail Teknis Optimasi</summary>
+      <div id="teknis-isi"></div>
+    </details>
+
   </div>
 </section>
 

@@ -269,6 +269,32 @@ body {
 .lanjutan summary::-webkit-details-marker { display: none; }
 .lanjutan summary::before { content: "\25B8  "; }
 .lanjutan[open] summary::before { content: "\25BE  "; }
+/* ---------------------------------------------------------------- proses */
+.proses-bungkus {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center; padding-top: 70px; padding-bottom: 70px;
+}
+.pemutar {
+  width: 38px; height: 38px; margin-bottom: 20px;
+  border: 3px solid var(--garis); border-top-color: var(--cokelat);
+  border-radius: 50%; animation: putar .8s linear infinite;
+}
+@keyframes putar { to { transform: rotate(360deg); } }
+#tahap { margin: 0 0 16px; font-size: 17px; font-weight: 700; }
+.bilah { width: 280px; height: 6px; background: var(--garis); border-radius: 3px; overflow: hidden; margin-bottom: 22px; }
+.bilah-isi { height: 100%; width: 0; background: var(--cokelat); border-radius: 3px; transition: width .4s ease; }
+.tahap-daftar { list-style: none; margin: 0 0 20px; padding: 0; text-align: left; }
+.tahap-daftar li {
+  padding: 5px 0 5px 26px; position: relative;
+  font-size: 13.5px; color: var(--tinta-samar);
+}
+.tahap-daftar li::before {
+  content: "\25CB"; position: absolute; left: 4px; color: var(--tinta-samar);
+}
+.tahap-daftar li.selesai { color: var(--tinta); }
+.tahap-daftar li.selesai::before { content: "\2713"; color: var(--hijau); }
+.tahap-daftar li.jalan { color: var(--cokelat-tua); font-weight: 700; }
+.tahap-daftar li.jalan::before { content: "\25CF"; color: var(--cokelat); }
 /* ---------------------------------------------------------------- galat */
 .galat {
   padding: 18px 20px; margin-bottom: 18px;
@@ -281,6 +307,92 @@ body {
   background: rgba(0,0,0,.03); border-radius: 7px;
   font-size: 11.5px; color: var(--tinta-lembut); white-space: pre-wrap;
 }
+/* ---------------------------------------------------------------- hasil */
+.pita-berhasil {
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 18px 22px; margin-bottom: 26px;
+  background: var(--gelap); color: #fff; border-radius: var(--bulat);
+}
+.pita-berhasil.gagal { background: #6d3327; }
+.pita-berhasil .centang {
+  display: grid; place-items: center;
+  width: 24px; height: 24px; flex: none;
+  background: rgba(255,255,255,.17); border-radius: 50%; font-size: 13px;
+}
+.pita-berhasil strong { font-size: 15px; font-weight: 700; }
+.pita-berhasil p { margin: 3px 0 0; font-size: 13.5px; color: rgba(255,255,255,.8); }
+
+.hasil-kepala {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 26px; flex-wrap: wrap;
+}
+.hasil-sub { margin: 0; font-size: 15px; color: var(--tinta-lembut); }
+
+.profil-bar { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+.profil-kartu {
+  flex: 1; min-width: 210px;
+  padding: 14px 16px; text-align: left;
+  background: var(--kertas); border: 1px solid var(--garis);
+  border-radius: var(--bulat); cursor: pointer; font: inherit;
+  transition: border-color .12s ease, background .12s ease;
+}
+.profil-kartu:hover { border-color: var(--cokelat); }
+.profil-kartu.aktif { border-color: var(--cokelat); background: var(--krem); box-shadow: var(--bayang); }
+.profil-kartu .pk-nama { display: block; font-size: 14px; font-weight: 700; margin-bottom: 7px; }
+.profil-kartu .pk-z { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+.profil-kartu .pk-rinci { display: block; margin-top: 4px; font-size: 12px; color: var(--tinta-lembut); }
+.profil-kartu .pk-tandai {
+  display: inline-block; margin-top: 8px;
+  padding: 2px 9px; font-size: 10.5px; font-weight: 700;
+  background: var(--krem-tua); color: var(--cokelat-tua); border-radius: 999px;
+}
+
+.statistik { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 28px; }
+.stat {
+  padding: 18px 20px;
+  background: var(--kertas); border: 1px solid var(--garis);
+  border-radius: var(--bulat); box-shadow: var(--bayang);
+}
+.stat .ikon { font-size: 17px; color: var(--cokelat); margin-bottom: 12px; }
+.stat .label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--tinta-samar); }
+.stat .nilai { margin-top: 4px; font-size: 25px; font-weight: 800; letter-spacing: -0.03em; }
+.stat .catat { margin-top: 5px; font-size: 12px; color: var(--tinta-lembut); }
+.stat.baik .nilai { color: var(--hijau); }
+.stat.buruk .nilai { color: var(--merah); }
+
+.tab { display: flex; gap: 4px; border-bottom: 1px solid var(--garis); margin-bottom: 26px; }
+.tab button {
+  padding: 11px 16px; position: relative;
+  font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--tinta-samar); background: none; border: 0; cursor: pointer;
+}
+.tab button:hover { color: var(--tinta); }
+.tab button.aktif { color: var(--tinta); }
+.tab button.aktif::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px;
+  height: 2px; background: var(--cokelat); border-radius: 2px;
+}
+/* ------------------------------------------------- biaya */
+.tabel { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tabel th, .tabel td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--garis-tipis); }
+.tabel th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--tinta-samar); font-weight: 700; }
+.tabel td.angka, .tabel th.angka { text-align: right; font-variant-numeric: tabular-nums; }
+.tabel tr.jumlah td { border-top: 2px solid var(--garis); border-bottom: 0; font-weight: 800; }
+
+.teknis summary {
+  cursor: pointer; font-size: 15px; font-weight: 700; color: var(--tinta);
+  list-style: none;
+}
+.teknis summary::-webkit-details-marker { display: none; }
+.teknis { margin-top: 26px; }
+.teknis .tabel { margin-top: 16px; }
+
+.peringatan {
+  padding: 13px 16px; margin-bottom: 18px;
+  background: #fdf8ec; border: 1px solid #ecdfbe;
+  border-radius: var(--bulat-kecil); font-size: 13.5px; color: #7a5c17;
+}
+.peringatan ul { margin: 6px 0 0; padding-left: 18px; }
 /* ---------------------------------------------------------------- kaki */
 .kaki {
   padding: 26px 0 36px;
