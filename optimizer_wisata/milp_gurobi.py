@@ -270,7 +270,7 @@ def _rekonstruksi(data, vr, P, H, arc):
 def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
                   minimum_kategori=None, kategori_wajib=None,
                   maks_destinasi=MAKS_DESTINASI, maks_hotel=MAKS_HOTEL,
-                  batas_waktu=BATAS_WAKTU_DETIK, cetak=False):
+                  batas_waktu=BATAS_WAKTU_DETIK, cetak=False, log_berkas=None):
     """Menjalankan MILP pada subset kecil dan mengembalikan solusi beserta gap.
 
     Dataset disempitkan ke subset lebih dulu supaya penilaian memakai
@@ -281,6 +281,9 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
     Optimality gap (2.23) hanya sah dibaca bila statusnya OPTIMAL. Pada
     status BATAS WAKTU, gap-nya menyatakan jarak ke batas bawah yang belum
     terbukti, bukan ke optimum.
+
+    log_berkas menyalakan catatan Gurobi ke berkas, dipakai ketika menjalankan
+    dataset penuh yang memakan waktu lama.
     """
     mulai = time.perf_counter()
     P, H = ambil_subset(data, maks_destinasi, maks_hotel)
@@ -300,6 +303,13 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
     mdl, vr, arc = bangun_model(sub, anggaran, bobot, P, H, kunci, tolak,
                                 minimum_kategori, kategori_wajib)
     mdl.Params.TimeLimit = batas_waktu
+    if log_berkas:
+        # Pada subset kecil Gurobi selesai dalam hitungan detik dan catatannya
+        # tidak berguna. Pada dataset penuh satu kali jalan dapat berjam-jam,
+        # dan tanpa catatan tidak ada cara mengetahui batas bawahnya sedang
+        # bergerak atau model sudah mandek.
+        mdl.Params.LogFile = log_berkas
+        mdl.Params.OutputFlag = 1
     mdl.optimize()
 
     status = mdl.Status

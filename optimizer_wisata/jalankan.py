@@ -4,6 +4,7 @@ Penggerak utama: tiga profil bobot, perbandingan metode, dan penguncian destinas
 Tiga cara pakai:
     py jalankan.py profil      tiga profil bobot pada dataset penuh, metode PSO
     py jalankan.py banding     PSO, Clarke-Wright, dan MILP pada subset yang sama
+    py jalankan.py banding-penuh   ketiganya pada 90 destinasi, batas MILP 6 jam
     py jalankan.py kunci       contoh mengunci dan menolak destinasi lalu menyusun ulang
 
 Seed dicatat pada setiap keluaran, sesuai batasan rancangan pada Bab I, supaya
@@ -25,6 +26,11 @@ import pso as PSO
 ANGGARAN = 3_000_000
 JUMLAH_HARI = 3
 SEED = 42
+# Batas waktu MILP pada dataset penuh. Pada subset 12 destinasi Gurobi sudah
+# memerlukan 82 detik untuk membuktikan optimalitas; pada 90 destinasi jumlah
+# variabel arc melonjak dari 768 ke 43.200, jadi batasnya diberi jauh lebih
+# longgar supaya yang terukur adalah perilaku penyelesainya, bukan batasnya.
+BATAS_MILP_PENUH_DETIK = 6 * 3600
 FOLDER_HASIL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hasil")
 
 
@@ -116,12 +122,21 @@ def jalankan_profil(data, anggaran=ANGGARAN, seed=SEED):
 
 # ---------------------------------------------------------------- perbandingan
 def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
-                     maks_destinasi=10, maks_hotel=4, batas_waktu=120):
-    """Membandingkan ketiga metode pada subset yang sama.
+                     maks_destinasi=10, maks_hotel=4, batas_waktu=120,
+                     log_berkas=None, nama_catatan="perbandingan_metode"):
+    """Membandingkan ketiga metode pada himpunan kandidat yang sama.
 
-    Pakai subset, bukan dataset penuh, karena MILP tidak selesai dalam waktu wajar
-    pada 90 destinasi. Ketiga metode diberi himpunan kandidat yang persis sama
-    supaya nilai objektifnya sebanding.
+    Bawaannya memakai subset, karena MILP tidak selesai dalam waktu wajar pada 90
+    destinasi. Ketiga metode diberi himpunan kandidat yang persis sama supaya nilai
+    objektifnya sebanding.
+
+    Ukuran penuh dapat diminta lewat maks_destinasi dan maks_hotel. Itu dipakai
+    sekali untuk mengukur sampai di mana penyelesai eksak masih sanggup, dan
+    hasilnya dilaporkan apa adanya termasuk bila berstatus BATAS WAKTU.
+
+    Clarke-Wright dan PSO dijalankan lebih dulu, lalu MILP. Urutan itu tidak
+    mengubah tabel, tetapi pada ukuran penuh berarti kedua heuristik sudah
+    tercatat sebelum Gurobi dimulai.
     """
     import milp_gurobi as MILP
 
@@ -148,20 +163,32 @@ def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
     print(f"seed PSO           : {seed}")
     print()
 
-    baris = []
+    heuristik = []
+    for fn in (lambda: PSO.jalankan_pso(sub, anggaran, bobot, seed=seed),
+               lambda: CW.jalankan_cws(sub, anggaran, bobot)):
+        r = _ringkas(sub, fn())
+        r["status"] = "heuristik"
+        heuristik.append(r)
+        print(f"  {r['metode']:<22} Z {r['Z']:.6f}   {r['runtime']:.3f} detik")
+
+    # Dicatat sebelum MILP mulai. Pada ukuran penuh Gurobi dapat berjam-jam, dan
+    # kalau prosesnya terhenti kedua baris ini tidak ikut hilang.
+    if log_berkas:
+        print(f"  pracatat heuristik: {_catat(nama_catatan + '_heuristik', {'seed': seed, 'anggaran': anggaran, 'subset_P': P, 'subset_H': H, 'baris': heuristik})}")
+        print(f"  catatan Gurobi    : {log_berkas}")
+    print(f"  MILP berjalan, batas waktu {batas_waktu / 3600:.2f} jam ...")
+
     hasil_milp = MILP.jalankan_milp(data, anggaran, bobot, maks_destinasi=maks_destinasi,
-                                    maks_hotel=maks_hotel, batas_waktu=batas_waktu)
+                                    maks_hotel=maks_hotel, batas_waktu=batas_waktu,
+                                    log_berkas=log_berkas)
     r = _ringkas(sub, hasil_milp)
     r["status"] = hasil_milp["status"]
     r["gap_persen"] = round(hasil_milp["gap"] * 100, 4) if hasil_milp.get("gap") is not None else None
-    baris.append(r)
-
-    for nama, fn in (("PSO", lambda: PSO.jalankan_pso(sub, anggaran, bobot, seed=seed)),
-                     ("CWS", lambda: CW.jalankan_cws(sub, anggaran, bobot))):
-        keluaran = fn()
-        r = _ringkas(sub, keluaran)
-        r["status"] = "heuristik"
-        baris.append(r)
+    r["jumlah_variabel"] = hasil_milp["jumlah_variabel"]
+    r["jumlah_batasan"] = hasil_milp["jumlah_batasan"]
+    r["batas_bawah"] = hasil_milp.get("batas_bawah")
+    baris = [r] + heuristik
+    print()
 
     # Persamaan (2.23). Selisih terhadap optimum hanya sah bila MILP berstatus OPTIMAL.
     acuan = baris[0]
@@ -174,13 +201,18 @@ def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
 
     _tabel(baris, ["metode", "status", "Z", "destinasi", "skor_total",
                    "biaya_total", "gap_persen", "runtime", "layak"])
+    print()
+    print(f"  ukuran model MILP : {baris[0].get('jumlah_variabel')} variabel, "
+          f"{baris[0].get('jumlah_batasan')} batasan")
 
     if hasil_milp["status"] != "OPTIMAL":
         print("\n  Catatan: MILP tidak mencapai status OPTIMAL, sehingga selisih terhadap")
         print("  optimum tidak dapat dihitung dan kolom gap dikosongkan.")
 
-    path = _catat("perbandingan_metode", {"seed": seed, "anggaran": anggaran,
-                                          "subset_P": P, "subset_H": H, "baris": baris})
+    path = _catat(nama_catatan, {"seed": seed, "anggaran": anggaran,
+                                 "hari": sub["m"], "profil": "seimbang",
+                                 "batas_waktu_milp": batas_waktu,
+                                 "subset_P": P, "subset_H": H, "baris": baris})
     print(f"\nhasil disimpan: {path}")
     return baris
 
@@ -238,11 +270,23 @@ def main():
         jalankan_profil(data)
     elif perintah == "banding":
         jalankan_banding(data)
+    elif perintah == "banding-penuh":
+        # Seluruh destinasi dan akomodasi. ambil_subset membagi kuota per kota,
+        # jadi kuotanya dikalikan jumlah kota supaya tidak ada yang terpotong.
+        n_kota = len(data["kota"])
+        log = os.path.join(FOLDER_HASIL, "gurobi_penuh.log")
+        os.makedirs(FOLDER_HASIL, exist_ok=True)
+        jalankan_banding(data,
+                         maks_destinasi=len(data["P"]) * n_kota,
+                         maks_hotel=len(data["H"]) * n_kota,
+                         batas_waktu=BATAS_MILP_PENUH_DETIK,
+                         log_berkas=log,
+                         nama_catatan="perbandingan_metode_penuh")
     elif perintah == "kunci":
         jalankan_kunci(data)
     else:
         print(f"Perintah tidak dikenal: {perintah}")
-        print("Pilihan: profil, banding, kunci")
+        print("Pilihan: profil, banding, banding-penuh, kunci")
         return 1
 
     print(f"\ntotal waktu jalan: {time.perf_counter() - mulai:.2f} detik")
