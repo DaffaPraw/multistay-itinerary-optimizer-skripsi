@@ -31,6 +31,13 @@ SEED = 42
 # variabel arc melonjak dari 768 ke 43.200, jadi batasnya diberi jauh lebih
 # longgar supaya yang terukur adalah perilaku penyelesainya, bukan batasnya.
 BATAS_MILP_PENUH_DETIK = 6 * 3600
+# Pengaman memori untuk percobaan penuh. Pohon branch-and-bound tumbuh tanpa
+# batas selama pencarian; pada mesin 16 GB itu berarti proses dapat mati setelah
+# berjam-jam tanpa melaporkan apa pun. NodefileStart menumpahkan simpul ke disk
+# lebih dulu, SoftMemLimit menghentikan Gurobi dengan rapi sehingga solusi
+# terbaik dan batas bawahnya tetap terbaca.
+NODEFILE_GB = 3.0
+BATAS_MEMORI_GB = 8.0
 FOLDER_HASIL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hasil")
 
 
@@ -123,7 +130,8 @@ def jalankan_profil(data, anggaran=ANGGARAN, seed=SEED):
 # ---------------------------------------------------------------- perbandingan
 def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
                      maks_destinasi=10, maks_hotel=4, batas_waktu=120,
-                     log_berkas=None, nama_catatan="perbandingan_metode"):
+                     log_berkas=None, nama_catatan="perbandingan_metode",
+                     nodefile_gb=None, batas_memori_gb=None, nodefile_dir=None):
     """Membandingkan ketiga metode pada himpunan kandidat yang sama.
 
     Bawaannya memakai subset, karena MILP tidak selesai dalam waktu wajar pada 90
@@ -180,7 +188,9 @@ def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
 
     hasil_milp = MILP.jalankan_milp(data, anggaran, bobot, maks_destinasi=maks_destinasi,
                                     maks_hotel=maks_hotel, batas_waktu=batas_waktu,
-                                    log_berkas=log_berkas)
+                                    log_berkas=log_berkas, nodefile_gb=nodefile_gb,
+                                    batas_memori_gb=batas_memori_gb,
+                                    nodefile_dir=nodefile_dir)
     r = _ringkas(sub, hasil_milp)
     r["status"] = hasil_milp["status"]
     r["gap_persen"] = round(hasil_milp["gap"] * 100, 4) if hasil_milp.get("gap") is not None else None
@@ -281,7 +291,10 @@ def main():
                          maks_hotel=len(data["H"]) * n_kota,
                          batas_waktu=BATAS_MILP_PENUH_DETIK,
                          log_berkas=log,
-                         nama_catatan="perbandingan_metode_penuh")
+                         nama_catatan="perbandingan_metode_penuh",
+                         nodefile_gb=NODEFILE_GB,
+                         batas_memori_gb=BATAS_MEMORI_GB,
+                         nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"))
     elif perintah == "kunci":
         jalankan_kunci(data)
     else:

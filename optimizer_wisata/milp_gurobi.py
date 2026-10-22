@@ -23,6 +23,7 @@ semata untuk melinearkan batasan kuota waktu harian (2.12), karena "akhir hari"
 tidak dapat dinyatakan linear tanpa variabel penampung.
 """
 
+import os
 import time
 
 import model as M
@@ -270,7 +271,8 @@ def _rekonstruksi(data, vr, P, H, arc):
 def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
                   minimum_kategori=None, kategori_wajib=None,
                   maks_destinasi=MAKS_DESTINASI, maks_hotel=MAKS_HOTEL,
-                  batas_waktu=BATAS_WAKTU_DETIK, cetak=False, log_berkas=None):
+                  batas_waktu=BATAS_WAKTU_DETIK, cetak=False, log_berkas=None,
+                  nodefile_gb=None, batas_memori_gb=None, nodefile_dir=None):
     """Menjalankan MILP pada subset kecil dan mengembalikan solusi beserta gap.
 
     Dataset disempitkan ke subset lebih dulu supaya penilaian memakai
@@ -284,6 +286,13 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
 
     log_berkas menyalakan catatan Gurobi ke berkas, dipakai ketika menjalankan
     dataset penuh yang memakan waktu lama.
+
+    nodefile_gb dan batas_memori_gb menjaga percobaan panjang tetap menghasilkan
+    sesuatu pada mesin dengan memori terbatas. Pohon branch-and-bound tumbuh tanpa
+    batas selama pencarian, dan tanpa keduanya proses dapat mati kehabisan memori
+    setelah berjam-jam tanpa melaporkan apa pun. Dengan keduanya Gurobi menumpahkan
+    simpul ke disk lebih dulu, lalu berhenti rapi dan tetap memberi solusi terbaik
+    beserta batas bawahnya.
     """
     mulai = time.perf_counter()
     P, H = ambil_subset(data, maks_destinasi, maks_hotel)
@@ -303,6 +312,13 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
     mdl, vr, arc = bangun_model(sub, anggaran, bobot, P, H, kunci, tolak,
                                 minimum_kategori, kategori_wajib)
     mdl.Params.TimeLimit = batas_waktu
+    if nodefile_gb:
+        mdl.Params.NodefileStart = nodefile_gb
+        if nodefile_dir:
+            os.makedirs(nodefile_dir, exist_ok=True)
+            mdl.Params.NodefileDir = nodefile_dir
+    if batas_memori_gb:
+        mdl.Params.SoftMemLimit = batas_memori_gb
     if log_berkas:
         # Pada subset kecil Gurobi selesai dalam hitungan detik dan catatannya
         # tidak berguna. Pada dataset penuh satu kali jalan dapat berjam-jam,
@@ -318,6 +334,10 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
         GRB.TIME_LIMIT: "BATAS WAKTU",
         GRB.INFEASIBLE: "TIDAK LAYAK",
         GRB.INF_OR_UNBD: "TIDAK LAYAK ATAU TIDAK TERBATAS",
+        GRB.MEM_LIMIT: "BATAS MEMORI",
+        GRB.NODE_LIMIT: "BATAS SIMPUL",
+        GRB.INTERRUPTED: "DIHENTIKAN",
+        GRB.SUBOPTIMAL: "SUBOPTIMAL",
     }.get(status, str(status))
 
     keluaran = {
