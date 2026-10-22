@@ -6,11 +6,22 @@ Tiga cara pakai:
     py jalankan.py banding     PSO, Clarke-Wright, dan MILP pada subset yang sama
     py jalankan.py banding-penuh   ketiganya pada 90 destinasi, batas MILP 6 jam
     py jalankan.py kunci       contoh mengunci dan menolak destinasi lalu menyusun ulang
+    py jalankan.py pso         satu metode saja, parameternya dari baris perintah
+    py jalankan.py cws         satu metode saja
+    py jalankan.py milp        satu metode saja, pada subset
+
+Perintah metode tunggal menerima --profil, --anggaran, --hari, dan --seed. PSO
+menambah --partikel, --iterasi, --inersia, --c1, dan --c2; MILP menambah --n,
+--hotel, dan --batas. Contoh:
+
+    py jalankan.py pso --seed 7 --profil hemat --c1 1.8 --c2 1.2
+    py jalankan.py milp --n 12 --batas 300
 
 Seed dicatat pada setiap keluaran, sesuai batasan rancangan pada Bab I, supaya
 hasil yang sama dapat dihasilkan ulang dan diverifikasi.
 """
 
+import argparse
 import json
 import os
 import sys
@@ -271,10 +282,110 @@ def jalankan_kunci(data, anggaran=ANGGARAN, seed=SEED):
     return r0, r1
 
 
+# ---------------------------------------------------------------- metode tunggal
+def jalankan_satu(data, metode, arg):
+    """Menjalankan satu metode saja dengan parameter dari baris perintah.
+
+    Berbeda dari mode banding yang selalu menjalankan ketiganya, perintah ini
+    dipakai ketika hanya satu metode yang ingin diamati, misalnya ketika menyetel
+    parameter PSO. Keluarannya tetap disimpan supaya dapat ditelusuri ulang.
+    """
+    bobot = M.PROFIL_BOBOT[arg.profil]
+    nama = {"pso": "PSO", "cws": "Clarke-Wright Savings", "milp": "MILP Gurobi"}[metode]
+
+    print(f"Metode tunggal: {nama}")
+    print("=" * 78)
+    print(f"dataset    : {os.path.basename(data['data_path'])}")
+    print(f"kandidat   : {len(data['P'])} destinasi, {len(data['H'])} akomodasi")
+    print(f"hari       : {data['m']}")
+    print(f"anggaran   : Rp{arg.anggaran:,}")
+    print(f"profil     : {M.NAMA_PROFIL[arg.profil]}, "
+          f"lambda {bobot['lambda1']}/{bobot['lambda2']}/"
+          f"{bobot['lambda3']}/{bobot['lambda4']}")
+
+    penilai = data
+    if metode == "pso":
+        print(f"seed       : {arg.seed}")
+        print(f"parameter  : {arg.partikel} partikel, {arg.iterasi} iterasi maks, "
+              f"inersia {arg.inersia}, c1 {arg.c1}, c2 {arg.c2}")
+        print()
+        keluaran = PSO.jalankan_pso(data, arg.anggaran, bobot, seed=arg.seed,
+                                    jumlah_partikel=arg.partikel,
+                                    maks_iterasi=arg.iterasi,
+                                    inersia=arg.inersia, c1=arg.c1, c2=arg.c2,
+                                    cetak=True)
+    elif metode == "cws":
+        print("catatan    : deterministik, seed tidak berpengaruh")
+        print()
+        keluaran = CW.jalankan_cws(data, arg.anggaran, bobot, cetak=True)
+    else:
+        import milp_gurobi as MILP
+
+        print(f"subset     : {arg.n} destinasi, {arg.hotel} akomodasi")
+        print(f"batas waktu: {arg.batas} detik")
+        print()
+        keluaran = MILP.jalankan_milp(data, arg.anggaran, bobot,
+                                      maks_destinasi=arg.n, maks_hotel=arg.hotel,
+                                      batas_waktu=arg.batas, cetak=True)
+        # Dinilai terhadap subset yang dilihat model, bukan dataset penuh, karena
+        # batas normalisasi diturunkan dari isi himpunan kandidat.
+        penilai = keluaran.get("data_subset") or data
+
+    r = _ringkas(penilai, keluaran)
+    r["status"] = keluaran.get("status", "heuristik")
+    if keluaran.get("gap") is not None:
+        r["gap_persen"] = round(keluaran["gap"] * 100, 4)
+
+    print()
+    _tabel([r], ["metode", "status", "Z", "destinasi", "skor_total",
+                 "biaya_total", "runtime", "layak"])
+
+    catatan = {"metode": metode, "profil": arg.profil, "anggaran": arg.anggaran,
+               "hari": arg.hari, "seed": arg.seed, "baris": [r]}
+    if metode == "pso":
+        catatan["parameter_pso"] = {"partikel": arg.partikel, "iterasi": arg.iterasi,
+                                    "inersia": arg.inersia, "c1": arg.c1, "c2": arg.c2}
+    if metode == "milp":
+        catatan["subset"] = {"destinasi": arg.n, "akomodasi": arg.hotel,
+                             "batas_waktu": arg.batas}
+    print(f"\nhasil disimpan: {_catat('metode_' + metode, catatan)}")
+    return r
+
+
+def _baca_argumen():
+    """Argumen baris perintah. Perintah lama tetap jalan tanpa tanda tambahan."""
+    p = argparse.ArgumentParser(
+        prog="jalankan.py",
+        description="Penggerak utama optimizer itinerary multi-menginap.")
+    p.add_argument("perintah", nargs="?", default="profil",
+                   choices=["profil", "banding", "banding-penuh", "kunci",
+                            "pso", "cws", "milp"])
+    p.add_argument("--profil", default="seimbang", choices=sorted(M.PROFIL_BOBOT),
+                   help="profil bobot lambda, bawaan seimbang")
+    p.add_argument("--anggaran", type=int, default=ANGGARAN)
+    p.add_argument("--hari", type=int, default=JUMLAH_HARI)
+    p.add_argument("--seed", type=int, default=SEED)
+    p.add_argument("--partikel", type=int, default=PSO.JUMLAH_PARTIKEL,
+                   help="PSO: jumlah partikel")
+    p.add_argument("--iterasi", type=int, default=PSO.MAKS_ITERASI,
+                   help="PSO: iterasi maksimum")
+    p.add_argument("--inersia", type=float, default=PSO.INERSIA)
+    p.add_argument("--c1", type=float, default=PSO.C1)
+    p.add_argument("--c2", type=float, default=PSO.C2)
+    p.add_argument("--n", type=int, default=10,
+                   help="MILP: jumlah destinasi kandidat pada subset")
+    p.add_argument("--hotel", type=int, default=4,
+                   help="MILP: jumlah akomodasi kandidat pada subset")
+    p.add_argument("--batas", type=int, default=120,
+                   help="MILP: batas waktu penyelesai, detik")
+    return p.parse_args()
+
+
 def main():
-    perintah = sys.argv[1] if len(sys.argv) > 1 else "profil"
+    arg = _baca_argumen()
+    perintah = arg.perintah
     mulai = time.perf_counter()
-    data = DS.muat_dataset(jumlah_hari=JUMLAH_HARI)
+    data = DS.muat_dataset(jumlah_hari=arg.hari)
 
     if perintah == "profil":
         jalankan_profil(data)
@@ -297,9 +408,10 @@ def main():
                          nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"))
     elif perintah == "kunci":
         jalankan_kunci(data)
+    elif perintah in ("pso", "cws", "milp"):
+        jalankan_satu(data, perintah, arg)
     else:
         print(f"Perintah tidak dikenal: {perintah}")
-        print("Pilihan: profil, banding, banding-penuh, kunci")
         return 1
 
     print(f"\ntotal waktu jalan: {time.perf_counter() - mulai:.2f} detik")

@@ -391,6 +391,8 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
 if __name__ == "__main__":
     import dataset as DS
 
-    d = DS.muat_dataset(jumlah_hari=2)
+    # Tiga hari, sama dengan blok __main__ pso.py dan clarke_wright.py, supaya
+    # menjalankan ketiganya berurutan menghasilkan angka yang sebanding.
+    d = DS.muat_dataset(jumlah_hari=3)
     jalankan_milp(d, anggaran=3_000_000, bobot=M.PROFIL_BOBOT["seimbang"],
                   maks_destinasi=10, maks_hotel=4, batas_waktu=120, cetak=True)

@@ -325,11 +325,16 @@ def perbarui_partikel(partikel, gbest_posisi, rng, inersia=INERSIA, c1=C1, c2=C2
 def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
                  minimum_kategori=None, kategori_wajib=None,
                  jumlah_partikel=JUMLAH_PARTIKEL, maks_iterasi=MAKS_ITERASI,
-                 seed=SEED, cetak=False, kabar=None):
+                 seed=SEED, cetak=False, kabar=None,
+                 inersia=INERSIA, c1=C1, c2=C2):
     """Menjalankan PSO.
 
     kabar(iterasi, maks, gbest) dipanggil tiap iterasi kalau diberikan. Dipakai
     antarmuka web karena satu kali jalan pada dataset penuh makan puluhan detik.
+
+    inersia, c1, dan c2 diteruskan ke perbarui_partikel. Ketiganya dibuat parameter
+    supaya penyetelan parameter dapat menyapu beberapa nilai dalam satu kali jalan,
+    tanpa menyunting konstanta modul dan menjalankan ulang.
     """
     mulai = time.perf_counter()
     rng = random.Random(seed)
@@ -364,7 +369,7 @@ def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
         tanpa_perbaikan += 1
         if tanpa_perbaikan > SABAR:
             break
-        perbarui_partikel(partikel, gbest_posisi, rng)
+        perbarui_partikel(partikel, gbest_posisi, rng, inersia, c1, c2)
 
     ok, pesan_validasi = M.validasi_solusi(data, gbest_solusi, kunci, tolak)
     keluaran = {
