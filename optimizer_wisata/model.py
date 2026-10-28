@@ -79,7 +79,12 @@ def atur_waktu(beta=None, jam_mulai=None, jam_selesai=None):
     return {"beta": BETA, "T_MULAI": T_MULAI, "T_SELESAI": T_SELESAI}
 
 # Persamaan (2.1). Empat bobot kepentingan, jumlahnya wajib satu.
-# Nilai setiap profil ditetapkan lewat pengujian awal Bab IV.
+#
+# Diperiksa penyetelan.py Percobaan C pada dataset penuh, 10 seed tiap profil.
+# Ketiganya benar-benar menggeser pilihan, bukan sekadar menggeser nilai Z:
+# hanya 2 dari 90 destinasi yang dipilih oleh ketiga profil. Hemat menekan
+# biaya 26 persen dibanding Seimbang, Rp982.366 lawan Rp1.324.488, dengan
+# skor hanya 1,5 persen lebih rendah, 190,10 lawan 193,00.
 PROFIL_BOBOT = {
     "hemat":     {"lambda1": 0.15, "lambda2": 0.10, "lambda3": 0.45, "lambda4": 0.30},
     "seimbang":  {"lambda1": 0.30, "lambda2": 0.20, "lambda3": 0.30, "lambda4": 0.20},
@@ -96,6 +101,16 @@ NAMA_PROFIL = {
 # Nilainya sengaja jauh lebih besar daripada rentang Z, yang tidak pernah melebihi
 # satu karena keempat komponennya ternormalkan. Dengan begitu keuntungan terbesar
 # yang bisa diperoleh dari melanggar suatu batasan selalu lebih kecil daripada penaltinya.
+#
+# Disapu penyetelan.py Percobaan B pada tiga tingkat keketatan anggaran, 10 seed.
+# Seluruh bobot mulai 1,0 ke atas memberi hasil identik sampai enam angka
+# desimal, baik pada anggaran longgar, ketat, maupun mustahil. Hanya 0,1 yang
+# menyimpang, dan di situ pencarian berani masuk wilayah melanggar lebih jauh.
+#
+# Jadi 10,0 bukan hasil optimasi melainkan satu titik pada dataran luas. Yang
+# perlu dipenuhi hanya cukup besar, bukan nilai tertentu. Pada anggaran
+# Rp700.000 tidak satu pun dari 10 seed menghasilkan solusi layak berapa pun
+# bobotnya, sebab penalti tidak dapat membuat masalah yang mustahil jadi mungkin.
 BOBOT_PENALTI = {
     "lambda5": 10.0,    # pelampauan anggaran
     "lambda6": 10.0,    # pelanggaran jam operasional

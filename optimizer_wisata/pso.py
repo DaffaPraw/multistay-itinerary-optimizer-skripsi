@@ -46,7 +46,29 @@ import model as M
 
 
 # -- pengaturan --
+# Disapu penyetelan.py Percobaan A, dataset penuh, 10 seed per konfigurasi.
+# Satu faktor pada satu waktu di sekitar nilai di bawah ini.
+#
+# Jumlah partikel adalah satu-satunya yang pengaruhnya nyata. Polanya monoton
+# 15 -> 0,334006, 20 -> 0,331535, 30 -> 0,328043, 50 -> 0,320288, lalu naik
+# lagi pada 80 -> 0,322318. Uji berpasangan pada sepuluh seed yang sama
+# memberi 50 partikel unggul pada 8 dari 10 seed, perbaikan rata 2,36 persen,
+# t = -2,50 terhadap ambang 2,26. Tipis tetapi searah, dan simpangan bakunya
+# ikut mengecil dari 0,008 ke 0,005.
+#
+# Tetap dipakai 30, bukan 50, karena ongkos waktunya 9,4 detik lawan 5,2 detik.
+# Aplikasi web menjalankan tiga profil pada satu permintaan, sehingga pilihan
+# itu berarti menunggu 28 detik alih-alih 16 detik untuk perbaikan 2,36 persen.
+# Angka 50 tetap dilaporkan pada Bab IV sebagai nilai terbaik yang terukur.
 JUMLAH_PARTIKEL = 30
+
+# Tiga tetapan berikut disapu pada rentang yang sama dan selisih antarnilainya
+# 0,0005 sampai 0,003, sementara simpangan baku antar seed 0,007. Jadi tidak
+# ada nilai yang terbukti lebih baik; seluruhnya tenggelam dalam derau.
+# Nilai di bawah ini dipertahankan sebagai nilai lazim pada pustaka PSO.
+#
+# Iterasi hampir tidak berpengaruh karena SABAR menghentikan lebih dulu:
+# pada batas 120 hanya 75,8 iterasi yang benar-benar terpakai.
 MAKS_ITERASI = 60
 INERSIA = 0.72
 C1 = 1.45

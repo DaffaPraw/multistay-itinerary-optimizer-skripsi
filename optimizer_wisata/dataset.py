@@ -109,6 +109,12 @@ GAMMA = {"indoor": 0.0, "mixed": 0.5, "campuran": 0.5, "outdoor": 1.0}
 # Persamaan (2.2). Saklar koreksi cuaca, 0 berarti mati dan 1 berarti nyala.
 # Merupakan parameter masukan, bukan variabel keputusan, karena optimizer yang
 # bebas memilih akan selalu mematikannya demi memperbaiki nilai objektif.
+# Disapu penyetelan.py Percobaan D. Pada dataset ini rho paling besar 0,0400
+# dan rata-ratanya 0,0133, sehingga destinasi outdoor paling banter kehilangan
+# 4 persen skor ketika w = 1. Peringkat antardestinasi nyaris tidak bergeser:
+# skor rata dataset 7,6761 menjadi 7,6202, dan tidak satu pun destinasi terpilih
+# berubah. Koreksi (2.2) terpasang dan terverifikasi, tetapi periode yang
+# disampel memang hampir tidak berhujan sehingga pengaruhnya tidak teramati.
 CUACA_AKTIF = 0
 
 # Jendela aktivitas harian [Ts, Te] pada Tabel 2.9, dalam jam. Ditaruh di sini
