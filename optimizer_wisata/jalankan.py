@@ -365,6 +365,12 @@ def _baca_argumen():
     p.add_argument("--anggaran", type=int, default=ANGGARAN)
     p.add_argument("--hari", type=int, default=JUMLAH_HARI)
     p.add_argument("--seed", type=int, default=SEED)
+    p.add_argument("--pengguna", type=int, default=None,
+                   help="nomor urut pengguna; seed diturunkan darinya, (3.6)")
+    p.add_argument("--beta", type=float, default=None,
+                   help="kuota waktu aktivitas harian, menit")
+    p.add_argument("--jam-mulai", type=int, default=None, dest="jam_mulai")
+    p.add_argument("--jam-selesai", type=int, default=None, dest="jam_selesai")
     p.add_argument("--partikel", type=int, default=PSO.JUMLAH_PARTIKEL,
                    help="PSO: jumlah partikel")
     p.add_argument("--iterasi", type=int, default=PSO.MAKS_ITERASI,
@@ -385,6 +391,17 @@ def main():
     arg = _baca_argumen()
     perintah = arg.perintah
     mulai = time.perf_counter()
+
+    # Ditetapkan sebelum dataset dimuat, sebab rho diambil pada jendela aktivitas
+    # dan penyaringan jamnya terjadi saat pemuatan.
+    if arg.beta is not None or arg.jam_mulai is not None or arg.jam_selesai is not None:
+        waktu = M.atur_waktu(arg.beta, arg.jam_mulai, arg.jam_selesai)
+        print(f"waktu      : kuota {waktu['beta']:.0f} menit, jendela "
+              f"{waktu['T_MULAI'] // 60}.00 sampai {waktu['T_SELESAI'] // 60}.00")
+    if arg.pengguna is not None:
+        arg.seed = PSO.seed_pengguna(arg.pengguna)
+        print(f"pengguna   : nomor {arg.pengguna}, seed {arg.seed} lewat (3.6)")
+
     data = DS.muat_dataset(jumlah_hari=arg.hari)
 
     if perintah == "profil":

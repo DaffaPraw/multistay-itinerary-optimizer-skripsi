@@ -41,6 +41,43 @@ T_SELESAI = dataset.JAM_SELESAI_AKTIVITAS * 60
 # hanya nilai bawaan.
 BETA = 600.0
 
+
+def atur_waktu(beta=None, jam_mulai=None, jam_selesai=None):
+    """Menetapkan kuota harian dan jendela aktivitas, naskah paragraf 448.
+
+    Naskah memperlakukan ketiganya sebagai parameter masukan pengguna, bukan
+    tetapan program. Nilainya diubah di tingkat modul, bukan dialirkan sebagai
+    argumen, karena ketiganya dibaca dari lebih dari dua puluh tempat pada
+    model.py, pso.py, milp_gurobi.py, dan peladen web. Pola ini sudah dipakai
+    lampiran_rekayasa.py yang menetapkan kuota 280 menit untuk Tabel L3.2.
+
+    PENTING: panggil sebelum muat_dataset. Probabilitas presipitasi rho
+    diambil sebagai nilai terbesar pada jendela aktivitas, dan penyaringan
+    jamnya terjadi saat dataset dimuat. Mengubah jendela sesudahnya membuat
+    rho tidak lagi sesuai jendela yang berlaku.
+    """
+    global BETA, T_MULAI, T_SELESAI
+    if jam_mulai is not None or jam_selesai is not None:
+        mulai = int(jam_mulai if jam_mulai is not None else dataset.JAM_MULAI_AKTIVITAS)
+        selesai = int(jam_selesai if jam_selesai is not None else dataset.JAM_SELESAI_AKTIVITAS)
+        if not 0 <= mulai < selesai <= 24:
+            raise ValueError(
+                f"Jendela aktivitas tidak masuk akal: {mulai} sampai {selesai}.")
+        dataset.JAM_MULAI_AKTIVITAS = mulai
+        dataset.JAM_SELESAI_AKTIVITAS = selesai
+        T_MULAI = mulai * 60
+        T_SELESAI = selesai * 60
+    if beta is not None:
+        beta = float(beta)
+        if beta <= 0:
+            raise ValueError(f"Kuota harian harus positif: {beta}")
+        if beta > T_SELESAI - T_MULAI:
+            raise ValueError(
+                f"Kuota harian {beta:.0f} menit melebihi lebar jendela aktivitas "
+                f"{T_SELESAI - T_MULAI:.0f} menit, sehingga tidak pernah mengikat.")
+        BETA = beta
+    return {"beta": BETA, "T_MULAI": T_MULAI, "T_SELESAI": T_SELESAI}
+
 # Persamaan (2.1). Empat bobot kepentingan, jumlahnya wajib satu.
 # Nilai setiap profil ditetapkan lewat pengujian awal Bab IV.
 PROFIL_BOBOT = {

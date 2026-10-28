@@ -73,7 +73,10 @@ def ambil_data(kota, kategori, hari):
     sehingga mengulanginya pada setiap permintaan akan membuang waktu pada
     pekerjaan yang hasilnya sama.
     """
-    tanda = (tuple(sorted(kota or ())), tuple(sorted(kategori or ())), int(hari))
+    # Jendela aktivitas ikut jadi kunci, sebab rho diambil pada jendela itu saat
+    # dataset dimuat. Tanpa itu, mengubah jendela memakai ulang dataset lama.
+    tanda = (tuple(sorted(kota or ())), tuple(sorted(kategori or ())), int(hari),
+             DS.JAM_MULAI_AKTIVITAS, DS.JAM_SELESAI_AKTIVITAS)
     with _kunci_data:
         if tanda in _simpanan_data:
             return _simpanan_data[tanda]
@@ -280,6 +283,12 @@ def _jalankan_kerja(kerja_id, permintaan):
                     "Destinasi yang dikunci tidak ada pada kandidat setelah "
                     f"penyaringan kota dan kategori: {asing}")
 
+        # Naskah paragraf 448: kuota harian dan jendela aktivitas adalah masukan.
+        # Ditetapkan sebelum ambil_data supaya rho memakai jendela yang sama.
+        if any(permintaan.get(k) for k in ("beta", "jam_mulai", "jam_selesai")):
+            M.atur_waktu(permintaan.get("beta"), permintaan.get("jam_mulai"),
+                         permintaan.get("jam_selesai"))
+
         metode = (permintaan.get("metode") or "pso").lower()
         # Bawaannya menjalankan ketiga profil bobot sekaligus, sesuai rancangan
         # pada Subbab 3.1.3 yang menyatakan Halaman Hasil menyajikan tiga
@@ -292,7 +301,12 @@ def _jalankan_kerja(kerja_id, permintaan):
             if pr not in M.PROFIL_BOBOT:
                 raise ValueError(f"Profil bobot tidak dikenal: {pr}")
 
-        seed = int(permintaan.get("seed") or PSO.SEED)
+        # (3.6) nomor urut pengguna dipakai sebagai seed. Isian seed langsung
+        # tetap diterima karena dipakai ketika menguji.
+        if permintaan.get("pengguna"):
+            seed = PSO.seed_pengguna(permintaan["pengguna"])
+        else:
+            seed = int(permintaan.get("seed") or PSO.SEED)
         hasil = {}
         langkah = [(pr, mt) for pr in profil_dipakai
                    for mt in (["pso", "cws"] if metode == "banding" else [metode])]
@@ -426,6 +440,7 @@ def keterangan():
         },
         "kuota_menit": M.BETA,
         "mulai_menit": M.T_MULAI,
+        "selesai_menit": M.T_SELESAI,
         "tanggal_awal": _tanggal_awal(),
         "destinasi": [
             {"id": k, "nama": v["nama"], "kota": v["kota"],

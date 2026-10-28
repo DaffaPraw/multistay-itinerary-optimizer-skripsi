@@ -104,8 +104,10 @@ async function muatKeterangan() {
     isi.profil.map((p) => `<span class="cip">${aman(p.nama)}</span>`).join("");
 
   el("tanggal").value = isi.tanggal_awal || "mengikuti data cuaca";
-  el("jam-mulai").value = jam(isi.mulai_menit);
-  el("jam-selesai").value = jam(isi.mulai_menit + isi.kuota_menit);
+  el("jam-mulai").value = Math.round(isi.mulai_menit / 60);
+  el("jam-selesai").value = Math.round(
+    (isi.selesai_menit != null ? isi.selesai_menit : isi.mulai_menit + isi.kuota_menit) / 60);
+  el("kuota").value = Math.round(isi.kuota_menit);
 
   const m = isi.matriks;
   el("keterangan-dataset").textContent =
@@ -135,7 +137,8 @@ function perbaruiRingkasan() {
   const kota = [...document.querySelectorAll('input[name="kota"]:checked')].map((c) => c.value);
   el("r-kota").textContent = kota.length ? kota.join(" & ") : "Menunggu pilihan";
   el("r-hari").textContent = el("hari").value + " Hari";
-  el("r-jam").textContent = `${el("jam-mulai").value} - ${el("jam-selesai").value}`;
+  el("r-jam").textContent =
+    `${jam(el("jam-mulai").value * 60)} - ${jam(el("jam-selesai").value * 60)}`;
   el("r-anggaran").textContent = rupiah(angkaDari(el("anggaran").value));
 
   const minat = minatTerpilih();
@@ -192,7 +195,10 @@ function kumpulkan() {
     anggaran: angkaDari(el("anggaran").value),
     profil: el("profil").value || "semua",
     metode: el("metode").value,
-    seed: parseInt(el("seed").value, 10) || 42,
+    pengguna: parseInt(el("pengguna").value, 10) || 1,
+    beta: parseInt(el("kuota").value, 10) || null,
+    jam_mulai: parseInt(el("jam-mulai").value, 10),
+    jam_selesai: parseInt(el("jam-selesai").value, 10),
     kunci: [...dikunci],
     tolak: [...ditolak],
   };

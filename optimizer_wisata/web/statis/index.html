@@ -94,17 +94,21 @@
           </div>
           <div class="dua-kolom">
             <div>
-              <label class="label-kecil">Waktu mulai harian</label>
-              <input type="text" id="jam-mulai" class="kolom" readonly>
+              <label class="label-kecil">Jam mulai aktivitas</label>
+              <input type="number" id="jam-mulai" min="0" max="23" class="kolom">
             </div>
             <div>
-              <label class="label-kecil">Waktu selesai harian</label>
-              <input type="text" id="jam-selesai" class="kolom" readonly>
+              <label class="label-kecil">Jam selesai aktivitas</label>
+              <input type="number" id="jam-selesai" min="1" max="24" class="kolom">
             </div>
           </div>
+          <label class="label-kecil" style="margin-top:14px">
+            Kuota aktivitas harian (menit)</label>
+          <input type="number" id="kuota" min="30" max="1440" step="30" class="kolom">
           <p class="bantu">
-            Jam aktivitas ditetapkan model sebagai parameter tetap pada Tabel 2.9 dan
-            belum dapat diubah pengguna.
+            Jendela aktivitas dan kuota harian adalah masukan pengguna sesuai naskah.
+            Jendela menentukan rentang jam destinasi boleh dikunjungi; kuota membatasi
+            lama satu hari dipakai, termasuk waktu tempuh dan menunggu jam buka.
           </p>
         </div>
 
@@ -136,9 +140,10 @@
               </select>
             </div>
             <div>
-              <label class="label-kecil">Seed</label>
-              <input type="number" id="seed" value="42" min="1" max="9999" class="kolom">
-              <p class="bantu">Seed berbeda menghasilkan rencana berbeda.</p>
+              <label class="label-kecil">Nomor pengguna</label>
+              <input type="number" id="pengguna" value="42" min="1" max="9999" class="kolom">
+              <p class="bantu">Persamaan (3.6): nomor pengguna dipakai sebagai seed,
+                sehingga pengguna yang sama selalu memperoleh rencana yang sama.</p>
             </div>
           </div>
           <div class="dua-kolom">

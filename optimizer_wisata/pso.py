@@ -52,6 +52,21 @@ INERSIA = 0.72
 C1 = 1.45
 C2 = 1.45
 SEED = 42
+
+
+def seed_pengguna(nomor):
+    """Persamaan (3.6). Nomor urut pengguna dipakai langsung sebagai seed.
+
+    Tujuannya bukan keacakan yang lebih baik, melainkan agar satu pengguna
+    memperoleh itinerary yang sama setiap kali meminta dengan masukan yang
+    sama, sementara dua pengguna berbeda memperoleh titik awal pencarian
+    yang berbeda. Tanpa itu seluruh pengguna berbagi satu seed tetap dan
+    menerima rekomendasi yang identik.
+    """
+    nomor = int(nomor)
+    if nomor < 1:
+        raise ValueError(f"Nomor pengguna harus bilangan bulat positif: {nomor}")
+    return nomor
 BATAS_POSISI = (0.0, 1.0)
 BATAS_KECEPATAN = (-0.25, 0.25)
 
