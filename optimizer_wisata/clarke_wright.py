@@ -221,7 +221,8 @@ def _bangun_solusi(data, anggaran, bobot, kunci, tolak, minimum_kategori,
 
 
 def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
-                 minimum_kategori=None, kategori_wajib=None, cetak=False):
+                 minimum_kategori=None, kategori_wajib=None, cetak=False,
+                 bobot_penalti=None):
     """Menjalankan Clarke-Wright Savings, sepuluh langkah subbab 2.5.
 
     Urutan pengerjaannya tidak sama dengan urutan nomor langkahnya. Langkah 3,
@@ -244,7 +245,7 @@ def jalankan_cws(data, anggaran, bobot, kunci=None, tolak=None,
         kandidat = _bangun_solusi(data, anggaran, bobot, kunci, tolak,
                                   minimum_kategori, kategori_wajib, pola)
         nilai = M.fitness(data, kandidat, anggaran, bobot,
-                          minimum_kategori, kategori_wajib)
+                          minimum_kategori, kategori_wajib, bobot_penalti)
         if terbaik is None or nilai["F"] < terbaik[0]["F"] - M.TOLERANSI:
             terbaik = (nilai, kandidat, pola)
 

@@ -326,11 +326,14 @@ def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
                  minimum_kategori=None, kategori_wajib=None,
                  jumlah_partikel=JUMLAH_PARTIKEL, maks_iterasi=MAKS_ITERASI,
                  seed=SEED, cetak=False, kabar=None,
-                 inersia=INERSIA, c1=C1, c2=C2):
+                 inersia=INERSIA, c1=C1, c2=C2, bobot_penalti=None):
     """Menjalankan PSO.
 
     kabar(iterasi, maks, gbest) dipanggil tiap iterasi kalau diberikan. Dipakai
     antarmuka web karena satu kali jalan pada dataset penuh makan puluhan detik.
+
+    bobot_penalti menggantikan lambda 5 sampai lambda 10 pada (2.20). Dipakai
+    percobaan penyetelan untuk mengukur seberapa besar penalti perlu dibuat.
 
     inersia, c1, dan c2 diteruskan ke perbarui_partikel. Ketiganya dibuat parameter
     supaya penyetelan parameter dapat menyapu beberapa nilai dalam satu kali jalan,
@@ -351,7 +354,8 @@ def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
         for p in partikel:
             solusi = terjemahkan(data, p["posisi"], anggaran, kunci, tolak,
                                  minimum_kategori, kategori_wajib)
-            hasil = M.fitness(data, solusi, anggaran, bobot, minimum_kategori, kategori_wajib)
+            hasil = M.fitness(data, solusi, anggaran, bobot, minimum_kategori,
+                              kategori_wajib, bobot_penalti)
             F = hasil["F"]
             if F < p["pbest_fitness"]:
                 p["pbest_fitness"] = F

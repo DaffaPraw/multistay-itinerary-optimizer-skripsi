@@ -438,8 +438,10 @@ function gambarJadwal(h) {
     return isi + "</div>";
   }).join("");
 
+  html += panelSusunUlang();
+  html += panelTidakDipilih(h);
   el("isi-jadwal").innerHTML = html;
-
+  pasangKendali();
 }
 
 function kartuHotel(t, hari) {
@@ -461,6 +463,7 @@ function kartuHotel(t, hari) {
 }
 
 function kartuDestinasi(t) {
+  const terkunci = dikunci.has(t.id), tertolak = ditolak.has(t.id);
   return `<div class="kartu-henti destinasi">
     <div class="henti-kiri">
       <span class="henti-cip">${aman(t.kategori)}</span>
@@ -479,7 +482,77 @@ function kartuDestinasi(t) {
         <div><span class="kecil">Tiket</span>
           <span class="jam-nilai">${t.tiket ? rupiah(t.tiket) : "Gratis"}</span></div>
       </div>
+      <div class="kendali">
+        <button type="button" data-kunci="${t.id}" class="${terkunci ? "nyala" : ""}">
+          ${terkunci ? "&#128274; Dikunci" : "Kunci"}</button>
+        <button type="button" data-tolak="${t.id}" class="tolak ${tertolak ? "nyala" : ""}">
+          ${tertolak ? "Ditolak" : "Tolak"}</button>
+      </div>
     </div></div>`;
+}
+
+function panelSusunUlang() {
+  if (!dikunci.size && !ditolak.size) {
+    return `<p class="bantu" style="margin-top:20px">
+      Tekan <strong>Kunci</strong> pada destinasi yang wajib muncul, atau
+      <strong>Tolak</strong> pada destinasi yang tidak diinginkan, lalu susun ulang.
+      Keduanya diterapkan lewat Persamaan (2.18a) dan (2.18b).</p>`;
+  }
+  return `<div class="susun-ulang">
+    <p>${dikunci.size} destinasi dikunci, ${ditolak.size} ditolak.
+      Perubahan belum diterapkan sampai itinerary disusun ulang.</p>
+    <button type="button" class="tombol-garis" id="bersihkan-kendali">Bersihkan</button>
+    <button type="button" class="tombol-hitam" id="susun-ulang">Susun Ulang</button>
+  </div>`;
+}
+
+function panelTidakDipilih(h) {
+  const d = h.tidak_dipilih || [];
+  if (!d.length) return "";
+  const tampil = d.slice(0, 25);
+  return `<details class="kartu-blok" style="margin-top:22px">
+    <summary style="cursor:pointer;font-weight:700">
+      Destinasi tidak dipilih (${d.length})</summary>
+    <p class="bantu">Kandidat yang tersedia tetapi tidak masuk itinerary, beserta
+      alasan yang dapat diperiksa dari batasan model.</p>
+    <div class="tolak-daftar">${tampil.map((r) => `
+      <div class="tolak-baris">
+        <div><strong>${aman(r.nama)}</strong>
+          <div class="alasan">${aman(r.kategori)} &middot; ${aman(r.kota)} &middot;
+            skor ${r.skor} &middot; ${r.tiket ? rupiah(r.tiket) : "gratis"}</div>
+          <div class="alasan">${aman(r.alasan)}</div></div>
+        <div class="kanan">
+          <button type="button" class="tombol-garis" data-kunci="${r.id}">
+            ${dikunci.has(r.id) ? "Dikunci" : "Kunci"}</button>
+        </div>
+      </div>`).join("")}</div>
+    ${d.length > tampil.length
+      ? `<p class="bantu">Menampilkan ${tampil.length} dari ${d.length}.</p>` : ""}
+  </details>`;
+}
+
+function pasangKendali() {
+  el("isi-jadwal").querySelectorAll("[data-kunci]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const id = b.dataset.kunci;
+      if (dikunci.has(id)) dikunci.delete(id);
+      else { dikunci.add(id); ditolak.delete(id); }
+      gambarJadwal(bungkusHasil.hasil[kunciAktif]);
+    }));
+  el("isi-jadwal").querySelectorAll("[data-tolak]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const id = b.dataset.tolak;
+      if (ditolak.has(id)) ditolak.delete(id);
+      else { ditolak.add(id); dikunci.delete(id); }
+      gambarJadwal(bungkusHasil.hasil[kunciAktif]);
+    }));
+  const s = el("susun-ulang");
+  if (s) s.addEventListener("click", () => kirim());
+  const c = el("bersihkan-kendali");
+  if (c) c.addEventListener("click", () => {
+    dikunci.clear(); ditolak.clear();
+    gambarJadwal(bungkusHasil.hasil[kunciAktif]);
+  });
 }
 
 // Geometri jalan per bungkus hasil, supaya berpindah tab tidak menarik ulang.
