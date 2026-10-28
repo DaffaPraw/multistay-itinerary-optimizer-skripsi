@@ -128,8 +128,10 @@ async function muatKeterangan() {
 function minatTerpilih() {
   const hasil = {};
   document.querySelectorAll(".kategori-item").forEach((d) => {
+    // Dijaga terhadap elemen berkelas sama yang bukan baris kategori.
     const c = d.querySelector(".kat-centang");
-    if (c.checked) hasil[c.value] = parseInt(d.querySelector(".kat-min").value, 10) || 0;
+    const m = d.querySelector(".kat-min");
+    if (c && m && c.checked) hasil[c.value] = parseInt(m.value, 10) || 0;
   });
   return hasil;
 }
@@ -199,6 +201,7 @@ function kumpulkan() {
     beta: parseInt(el("kuota").value, 10) || null,
     jam_mulai: parseInt(el("jam-mulai").value, 10),
     jam_selesai: parseInt(el("jam-selesai").value, 10),
+    cuaca: el("cuaca").checked ? 1 : 0,
     kunci: [...dikunci],
     tolak: [...ditolak],
   };

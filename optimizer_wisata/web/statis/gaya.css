@@ -210,6 +210,19 @@ body {
 
 .kategori-kisi { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 @media (max-width: 620px) { .kategori-kisi { grid-template-columns: 1fr; } }
+.pilihan-centang {
+  display: flex; align-items: center; gap: 9px;
+  margin-top: 14px; padding: 9px 11px;
+  border: 1px solid var(--garis); border-radius: var(--bulat-kecil);
+  font-size: 13.5px; cursor: pointer;
+}
+.pilihan-centang:has(input:checked) {
+  border-color: var(--cokelat); background: var(--krem);
+}
+.pilihan-centang input[type="checkbox"] {
+  accent-color: var(--cokelat); width: 16px; height: 16px;
+}
+
 .kategori-item {
   display: flex; align-items: center; gap: 9px;
   padding: 9px 11px;

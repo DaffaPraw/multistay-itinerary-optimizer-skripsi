@@ -66,7 +66,7 @@ _kunci_kerja = threading.Lock()
 _kerja = {}
 
 
-def ambil_data(kota, kategori, hari):
+def ambil_data(kota, kategori, hari, cuaca=DS.CUACA_AKTIF):
     """Memuat dataset sekali untuk setiap kombinasi penyaringan, lalu dipakai ulang.
 
     Pemuatan membaca berkas Excel dan menyusun matriks seluruh pasangan node,
@@ -75,8 +75,10 @@ def ambil_data(kota, kategori, hari):
     """
     # Jendela aktivitas ikut jadi kunci, sebab rho diambil pada jendela itu saat
     # dataset dimuat. Tanpa itu, mengubah jendela memakai ulang dataset lama.
+    # Jendela aktivitas dan saklar cuaca ikut jadi kunci, sebab rho diambil pada
+    # jendela itu dan skor terkoreksi s_bar dihitung, keduanya saat dataset dimuat.
     tanda = (tuple(sorted(kota or ())), tuple(sorted(kategori or ())), int(hari),
-             DS.JAM_MULAI_AKTIVITAS, DS.JAM_SELESAI_AKTIVITAS)
+             DS.JAM_MULAI_AKTIVITAS, DS.JAM_SELESAI_AKTIVITAS, int(cuaca))
     with _kunci_data:
         if tanda in _simpanan_data:
             return _simpanan_data[tanda]
@@ -84,6 +86,7 @@ def ambil_data(kota, kategori, hari):
         kota_dipilih=list(kota) if kota else None,
         kategori_dipilih=list(kategori) if kategori else None,
         jumlah_hari=int(hari),
+        cuaca_aktif=int(cuaca),
     )
     with _kunci_data:
         _simpanan_data[tanda] = data
@@ -274,7 +277,10 @@ def _jalankan_kerja(kerja_id, permintaan):
                     f"Destinasi tidak dapat dikunci sekaligus ditolak: {sorted(bentrok)}")
 
         tahap("memuat dataset", 0.08)
-        data = ambil_data(permintaan.get("kota"), kategori, hari)
+        # Persamaan (2.2) bersifat opsional. Pengguna yang tidak peduli cuaca
+        # memperoleh skor apa adanya; yang peduli memperoleh skor terkoreksi.
+        cuaca = 1 if permintaan.get("cuaca") else 0
+        data = ambil_data(permintaan.get("kota"), kategori, hari, cuaca)
 
         if kunci:
             asing = [i for i in kunci if i not in data["P"]]
@@ -438,6 +444,7 @@ def keterangan():
             "versi": matriks["versi"], "diambil": matriks["diambil"],
             "node": len(matriks["ids"]),
         },
+        "cuaca_bawaan": DS.CUACA_AKTIF,
         "kuota_menit": M.BETA,
         "mulai_menit": M.T_MULAI,
         "selesai_menit": M.T_SELESAI,

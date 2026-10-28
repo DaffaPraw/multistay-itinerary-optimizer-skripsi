@@ -371,6 +371,8 @@ def _baca_argumen():
                    help="kuota waktu aktivitas harian, menit")
     p.add_argument("--jam-mulai", type=int, default=None, dest="jam_mulai")
     p.add_argument("--jam-selesai", type=int, default=None, dest="jam_selesai")
+    p.add_argument("--cuaca", action="store_true",
+                   help="menyalakan koreksi cuaca (2.2); bawaannya mati")
     p.add_argument("--partikel", type=int, default=PSO.JUMLAH_PARTIKEL,
                    help="PSO: jumlah partikel")
     p.add_argument("--iterasi", type=int, default=PSO.MAKS_ITERASI,
@@ -402,7 +404,10 @@ def main():
         arg.seed = PSO.seed_pengguna(arg.pengguna)
         print(f"pengguna   : nomor {arg.pengguna}, seed {arg.seed} lewat (3.6)")
 
-    data = DS.muat_dataset(jumlah_hari=arg.hari)
+    data = DS.muat_dataset(jumlah_hari=arg.hari,
+                           cuaca_aktif=1 if arg.cuaca else DS.CUACA_AKTIF)
+    if arg.cuaca:
+        print('cuaca      : koreksi (2.2) dinyalakan, w = 1')
 
     if perintah == "profil":
         jalankan_profil(data)
