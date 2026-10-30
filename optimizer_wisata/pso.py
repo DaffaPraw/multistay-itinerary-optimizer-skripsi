@@ -89,7 +89,8 @@ def seed_pengguna(nomor):
     if nomor < 1:
         raise ValueError(f"Nomor pengguna harus bilangan bulat positif: {nomor}")
     return nomor
-BATAS_POSISI = (0.0, 1.0)
+# Rentang pengundian kecepatan awal. Bukan pemotongan: (2.21) dan
+# (2.22) tidak dibatasi, sesuai naskah.
 BATAS_KECEPATAN = (-0.25, 0.25)
 
 # Berhenti lebih awal bila global best tidak membaik selama sekian iterasi.
@@ -187,7 +188,11 @@ def _kota_menginap(data, posisi):
     hasil = {}
     for d in data["D"]:
         k = int(posisi[kunci_malam(d)] * len(kota))
-        hasil[d] = kota[min(k, len(kota) - 1)]
+        # Kunci tidak lagi dipotong ke 0..1, jadi k dapat jatuh di
+        # luar rentang indeks. Sisi bawah wajib dijaga: indeks
+        # negatif membaca daftar dari belakang, sehingga kotanya
+        # salah tanpa galat.
+        hasil[d] = kota[max(0, min(k, len(kota) - 1))]
     return hasil
 
 
@@ -344,19 +349,18 @@ def perbarui_partikel(partikel, gbest_posisi, rng, inersia=INERSIA, c1=C1, c2=C2
     Inilah sebabnya setiap kunci bergerak dengan besar yang berbeda meskipun
     menghadap pbest dan gbest yang sama.
     """
-    lo, hi = BATAS_POSISI
-    vlo, vhi = BATAS_KECEPATAN
     for p in partikel:
         for n in p["posisi"]:
             r1, r2 = rng.random(), rng.random()
+            # (2.21) pembaruan kecepatan, tanpa pembatas rentang
             v = (
                 inersia * p["kecepatan"][n]
                 + c1 * r1 * (p["pbest_posisi"][n] - p["posisi"][n])
                 + c2 * r2 * (gbest_posisi[n] - p["posisi"][n])
             )
-            v = max(vlo, min(vhi, v))
             p["kecepatan"][n] = v
-            p["posisi"][n] = max(lo, min(hi, p["posisi"][n] + v))
+            # (2.22) pembaruan posisi, tanpa pembatas rentang
+            p["posisi"][n] = p["posisi"][n] + v
 
 
 def jalankan_pso(data, anggaran, bobot, kunci=None, tolak=None,
