@@ -47,8 +47,20 @@ BATAS_MILP_PENUH_DETIK = 6 * 3600
 # berjam-jam tanpa melaporkan apa pun. NodefileStart menumpahkan simpul ke disk
 # lebih dulu, SoftMemLimit menghentikan Gurobi dengan rapi sehingga solusi
 # terbaik dan batas bawahnya tetap terbaca.
-NODEFILE_GB = 3.0
-BATAS_MEMORI_GB = 8.0
+#
+# Jalan enam jam yang pertama berhenti dengan sebab "Memory limit reached",
+# bukan karena batas waktunya habis. Untuk jalan yang jauh lebih panjang
+# ambang luapan diturunkan supaya pohon pencarian pindah ke disk jauh lebih
+# awal, dan batas berhentinya dinaikkan sedikit. Disknya 1,6 TB kosong,
+# sedangkan memorinya 16 GB, jadi disk memang tempat yang lebih longgar.
+NODEFILE_GB = 1.0
+BATAS_MEMORI_GB = 9.0
+# Pada jalan enam jam itu berkas luapan simpul tetap nol byte, jadi yang
+# menghabiskan memori bukan pohon pencarian melainkan pekerjaan tiap utas.
+# Mesinnya dua belas utas; dipakai separuh supaya jalan dua puluh empat jam
+# punya peluang mencapai batas waktunya, bukan batas memorinya. Hanya dipasang
+# pada ukuran penuh, sebab pada subset memori tidak pernah jadi persoalan.
+UTAS_PENUH = 6
 FOLDER_HASIL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hasil")
 
 
@@ -142,7 +154,8 @@ def jalankan_profil(data, anggaran=ANGGARAN, seed=SEED):
 def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
                      maks_destinasi=10, maks_hotel=4, batas_waktu=120,
                      log_berkas=None, nama_catatan="perbandingan_metode",
-                     nodefile_gb=None, batas_memori_gb=None, nodefile_dir=None):
+                     nodefile_gb=None, batas_memori_gb=None, nodefile_dir=None,
+                     utas=None):
     """Membandingkan ketiga metode pada himpunan kandidat yang sama.
 
     Bawaannya memakai subset, karena MILP tidak selesai dalam waktu wajar pada 90
@@ -201,7 +214,7 @@ def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
                                     maks_hotel=maks_hotel, batas_waktu=batas_waktu,
                                     log_berkas=log_berkas, nodefile_gb=nodefile_gb,
                                     batas_memori_gb=batas_memori_gb,
-                                    nodefile_dir=nodefile_dir)
+                                    nodefile_dir=nodefile_dir, utas=utas)
     r = _ringkas(sub, hasil_milp)
     r["status"] = hasil_milp["status"]
     r["gap_persen"] = round(hasil_milp["gap"] * 100, 4) if hasil_milp.get("gap") is not None else None
@@ -322,11 +335,12 @@ def jalankan_satu(data, metode, arg):
         import milp_gurobi as MILP
 
         print(f"subset     : {arg.n} destinasi, {arg.hotel} akomodasi")
-        print(f"batas waktu: {arg.batas} detik")
+        print(f"batas waktu: {arg.batas or 120} detik")
         print()
         keluaran = MILP.jalankan_milp(data, arg.anggaran, bobot,
                                       maks_destinasi=arg.n, maks_hotel=arg.hotel,
-                                      batas_waktu=arg.batas, cetak=True)
+                                      batas_waktu=arg.batas or 120,
+                                      utas=arg.utas, cetak=True)
         # Dinilai terhadap subset yang dilihat model, bukan dataset penuh, karena
         # batas normalisasi diturunkan dari isi himpunan kandidat.
         penilai = keluaran.get("data_subset") or data
@@ -384,8 +398,13 @@ def _baca_argumen():
                    help="MILP: jumlah destinasi kandidat pada subset")
     p.add_argument("--hotel", type=int, default=4,
                    help="MILP: jumlah akomodasi kandidat pada subset")
-    p.add_argument("--batas", type=int, default=120,
-                   help="MILP: batas waktu penyelesai, detik")
+    p.add_argument("--batas", type=int, default=None,
+                   help="MILP: batas waktu penyelesai, detik. Bawaannya 120 detik "
+                        "pada subset dan enam jam pada dataset penuh")
+    p.add_argument("--utas", type=int, default=None,
+                   help="MILP: jumlah utas Gurobi. Bawaannya seluruh utas mesin "
+                        "pada subset dan separuhnya pada dataset penuh, sebab "
+                        "memori yang terpakai sebanding dengan jumlah utas")
     return p.parse_args()
 
 
@@ -412,22 +431,41 @@ def main():
     if perintah == "profil":
         jalankan_profil(data)
     elif perintah == "banding":
-        jalankan_banding(data)
+        # Ukuran subset dan batas waktunya ikut baris perintah, sebab Bab IV
+        # membandingkan ketiga metode pada beberapa ukuran dataset. Pengaman
+        # memori dan berkas luapan dipasang juga di sini, bukan hanya pada
+        # ukuran penuh, karena subset besar pun dapat berjam-jam.
+        batas = arg.batas or 120
+        os.makedirs(FOLDER_HASIL, exist_ok=True)
+        jalankan_banding(data, anggaran=arg.anggaran, seed=arg.seed,
+                         maks_destinasi=arg.n, maks_hotel=arg.hotel,
+                         batas_waktu=batas,
+                         log_berkas=os.path.join(FOLDER_HASIL,
+                                                 f"gurobi_n{arg.n}.log"),
+                         nama_catatan=f"perbandingan_metode_n{arg.n}",
+                         nodefile_gb=NODEFILE_GB,
+                         batas_memori_gb=BATAS_MEMORI_GB,
+                         nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"),
+                         utas=arg.utas)
     elif perintah == "banding-penuh":
         # Seluruh destinasi dan akomodasi. ambil_subset membagi kuota per kota,
         # jadi kuotanya dikalikan jumlah kota supaya tidak ada yang terpotong.
         n_kota = len(data["kota"])
-        log = os.path.join(FOLDER_HASIL, "gurobi_penuh.log")
+        batas = arg.batas or BATAS_MILP_PENUH_DETIK
+        # Namanya menyebut batas waktunya supaya catatan Gurobi dari jalan yang
+        # lebih pendek tidak tertimpa jalan yang lebih panjang.
+        log = os.path.join(FOLDER_HASIL, f"gurobi_penuh_{batas // 3600}jam.log")
         os.makedirs(FOLDER_HASIL, exist_ok=True)
-        jalankan_banding(data,
+        jalankan_banding(data, anggaran=arg.anggaran, seed=arg.seed,
                          maks_destinasi=len(data["P"]) * n_kota,
                          maks_hotel=len(data["H"]) * n_kota,
-                         batas_waktu=BATAS_MILP_PENUH_DETIK,
+                         batas_waktu=batas,
                          log_berkas=log,
                          nama_catatan="perbandingan_metode_penuh",
                          nodefile_gb=NODEFILE_GB,
                          batas_memori_gb=BATAS_MEMORI_GB,
-                         nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"))
+                         nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"),
+                         utas=arg.utas or UTAS_PENUH)
     elif perintah == "kunci":
         jalankan_kunci(data)
     elif perintah in ("pso", "cws", "milp"):

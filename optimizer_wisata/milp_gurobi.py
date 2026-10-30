@@ -272,7 +272,8 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
                   minimum_kategori=None, kategori_wajib=None,
                   maks_destinasi=MAKS_DESTINASI, maks_hotel=MAKS_HOTEL,
                   batas_waktu=BATAS_WAKTU_DETIK, cetak=False, log_berkas=None,
-                  nodefile_gb=None, batas_memori_gb=None, nodefile_dir=None):
+                  nodefile_gb=None, batas_memori_gb=None, nodefile_dir=None,
+                  utas=None):
     """Menjalankan MILP pada subset kecil dan mengembalikan solusi beserta gap.
 
     Dataset disempitkan ke subset lebih dulu supaya penilaian memakai
@@ -319,6 +320,14 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
             mdl.Params.NodefileDir = nodefile_dir
     if batas_memori_gb:
         mdl.Params.SoftMemLimit = batas_memori_gb
+    if utas:
+        # Jalan enam jam pada dataset penuh berhenti karena batas memori padahal
+        # berkas luapan simpul tetap nol byte. Jadi yang menghabiskan memori
+        # bukan pohon pencarian melainkan pekerjaan tiap utas, yang masing-masing
+        # memegang faktorisasi sendiri. Pada mesin dua belas utas itu dua belas
+        # salinan. Menurunkan jumlah utas memperlambat pencarian, tetapi
+        # memperpanjang umur jalan yang batas waktunya memang panjang.
+        mdl.Params.Threads = utas
     if log_berkas:
         # Pada subset kecil Gurobi selesai dalam hitungan detik dan catatannya
         # tidak berguna. Pada dataset penuh satu kali jalan dapat berjam-jam,
