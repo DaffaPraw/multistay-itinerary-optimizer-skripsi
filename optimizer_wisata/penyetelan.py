@@ -55,6 +55,10 @@ ANGGARAN_MUSTAHIL = 700_000
 JUMLAH_HARI = 3
 SEED_AWAL = 1
 JUMLAH_SEED = 10
+# Kuota aktivitas harian untuk skenario skripsi, dalam menit. Naskah
+# menyebut angka ini sebagai setelan percobaan, jadi dipatok di sini dan
+# tidak diambil dari nilai bawaan model.py, yang seluruh lebar jendela.
+BETA_SKENARIO = 600.0
 FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hasil")
 
 
@@ -306,10 +310,14 @@ def main():
     semua = ("a", "b", "c", "d")
     pilih = tuple(h for h in semua if h in sys.argv[1:]) or semua
     bobot = M.PROFIL_BOBOT["seimbang"]
+    # Sebelum pemuatan, sebab rho diambil pada jendela aktivitas.
+    M.atur_waktu(beta=BETA_SKENARIO)
     data = DS.muat_dataset(jumlah_hari=JUMLAH_HARI)
 
     print(f"dataset   : {os.path.basename(data['data_path'])}")
     print(f"kandidat  : {len(data['P'])} destinasi, {len(data['H'])} akomodasi")
+    print(f"kuota     : {M.BETA:.0f} menit, jendela "
+          f"{M.T_MULAI // 60}.00 sampai {M.T_SELESAI // 60}.00")
     print(f"anggaran  : Rp{ANGGARAN:,}   hari: {JUMLAH_HARI}")
     print(f"seed      : {SEED_AWAL} sampai {SEED_AWAL + n_seed - 1}")
     print()

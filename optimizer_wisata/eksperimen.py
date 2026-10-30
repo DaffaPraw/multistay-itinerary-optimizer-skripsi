@@ -39,6 +39,10 @@ import pso as PSO
 ANGGARAN = 3_000_000
 JUMLAH_HARI = 3
 SEED_AWAL = 1
+# Kuota aktivitas harian untuk skenario skripsi, dalam menit. Naskah
+# menyebut angka ini sebagai setelan percobaan, jadi dipatok di sini dan
+# tidak diambil dari nilai bawaan model.py, yang seluruh lebar jendela.
+BETA_SKENARIO = 600.0
 JUMLAH_SEED = 30
 UKURAN_SUBSET = (8, 10, 12)
 MAKS_HOTEL = 4
@@ -172,6 +176,8 @@ def main():
     mulai = time.perf_counter()
     cepat = "--cepat" in sys.argv
     bobot = M.PROFIL_BOBOT["seimbang"]
+    # Sebelum pemuatan, sebab rho diambil pada jendela aktivitas.
+    M.atur_waktu(beta=BETA_SKENARIO)
     data = DS.muat_dataset(jumlah_hari=JUMLAH_HARI)
 
     ukuran = (8, 10) if cepat else UKURAN_SUBSET

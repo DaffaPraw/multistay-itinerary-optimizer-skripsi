@@ -37,6 +37,10 @@ import pso as PSO
 ANGGARAN = 3_000_000
 JUMLAH_HARI = 3
 SEED = 42
+# Kuota aktivitas harian untuk skenario skripsi, dalam menit. Naskah
+# menyebut angka ini sebagai setelan percobaan, jadi dipatok di sini dan
+# tidak diambil dari nilai bawaan model.py, yang seluruh lebar jendela.
+BETA_SKENARIO = 600.0
 # Batas waktu MILP pada dataset penuh. Pada subset 12 destinasi Gurobi sudah
 # memerlukan 82 detik untuk membuktikan optimalitas; pada 90 destinasi jumlah
 # variabel arc melonjak dari 768 ke 43.200, jadi batasnya diberi jauh lebih
@@ -422,10 +426,15 @@ def main():
 
     # Ditetapkan sebelum dataset dimuat, sebab rho diambil pada jendela aktivitas
     # dan penyaringan jamnya terjadi saat pemuatan.
-    if arg.beta is not None or arg.jam_mulai is not None or arg.jam_selesai is not None:
-        waktu = M.atur_waktu(arg.beta, arg.jam_mulai, arg.jam_selesai)
-        print(f"waktu      : kuota {waktu['beta']:.0f} menit, jendela "
-              f"{waktu['T_MULAI'] // 60}.00 sampai {waktu['T_SELESAI'] // 60}.00")
+    # Tanpa argumen waktu sama sekali, kuota skenario yang dipakai. Jendela
+    # yang disebut tegas tanpa --beta tetap menentukan kuotanya sendiri,
+    # sesuai nilai bawaan model.py.
+    beta = arg.beta
+    if beta is None and arg.jam_mulai is None and arg.jam_selesai is None:
+        beta = BETA_SKENARIO
+    waktu = M.atur_waktu(beta, arg.jam_mulai, arg.jam_selesai)
+    print(f"waktu      : kuota {waktu['beta']:.0f} menit, jendela "
+          f"{waktu['T_MULAI'] // 60}.00 sampai {waktu['T_SELESAI'] // 60}.00")
     if arg.pengguna is not None:
         arg.seed = PSO.seed_pengguna(arg.pengguna)
         print(f"pengguna   : nomor {arg.pengguna}, seed {arg.seed} lewat (3.6)")
