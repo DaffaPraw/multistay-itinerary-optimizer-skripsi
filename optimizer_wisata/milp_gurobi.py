@@ -144,29 +144,26 @@ def bangun_model(data, anggaran, bobot, P, H, kunci=None, tolak=None,
         (gp.quicksum(x[i, b, d] for b in N if (i, b) in arc) == y[i, d] for i in P for d in D),
         name="c29b")
 
-    # ---------------- (2.9c) konservasi aliran pada destinasi
-    # Tersirat dari (2.9a) dan (2.9b), sebab keduanya menyamakan derajat masuk dan
-    # derajat keluar pada y[i,d] yang sama. Tetap dituliskan karena naskah
-    # menyebut tiga batasan kontinuitas, dan kode semestinya memperlihatkan
-    # ketiganya. Batasan ini tidak pernah mengikat dan presolve Gurobi membuangnya.
-    #
-    # Lingkupnya hanya destinasi. Pada akomodasi konservasi aliran justru keliru:
-    # (2.10) dan (2.11) sengaja memberi derajat keluar z[h,d] dan derajat masuk
-    # z[h, malam berikutnya], yang memang berbeda pada hari yang berpindah hotel.
-    mdl.addConstrs(
-        (gp.quicksum(x[a, i, d] for a in N if (a, i) in arc)
-         == gp.quicksum(x[i, b, d] for b in N if (i, b) in arc)
-         for i in P for d in D),
-        name="c29c")
+    # ---------------- (2.9c) tidak ada arc dari sebuah simpul ke dirinya sendiri
+    # Naskah menuliskannya sebagai x[u,u,d] = 0 untuk tiap u pada N dan d pada D.
+    # Tidak ditulis sebagai batasan di sini sebab sudah terpenuhi lebih awal:
+    # pembentukan arc membuang pasangan (u,u), sehingga variabel x[u,u,d] tidak
+    # pernah dibuat dan nilainya permanen nol. Menuliskannya sebagai batasan
+    # berarti membatasi variabel yang tidak ada.
 
     # ---------------- (2.10) hari d berangkat dari akomodasi malam d
+    # Dijumlahkan atas destinasi saja, mengikuti bunyi (2.10) yang memakai
+    # indeks i pada P. Arc dari akomodasi ke akomodasi lain karena itu tidak
+    # ikut memenuhi batasan ini, sehingga hari yang berangkat tanpa singgah
+    # di satu destinasi pun tidak dapat terbentuk.
     mdl.addConstrs(
-        (gp.quicksum(x[h, b, d] for b in N if (h, b) in arc) == z[h, d] for h in H for d in D),
+        (gp.quicksum(x[h, i, d] for i in P) == z[h, d] for h in H for d in D),
         name="c210")
     # ---------------- (2.11) dan (2.11a) hari d berakhir pada akomodasi malam
-    # berikutnya, kecuali hari terakhir yang kembali ke akomodasi malam m
+    # berikutnya, kecuali hari terakhir yang kembali ke akomodasi malam m.
+    # Dijumlahkan atas destinasi saja, sama seperti (2.10).
     mdl.addConstrs(
-        (gp.quicksum(x[a, h, d] for a in N if (a, h) in arc) == z[h, M.malam_akhir(d, m)]
+        (gp.quicksum(x[i, h, d] for i in P) == z[h, M.malam_akhir(d, m)]
          for h in H for d in D),
         name="c211")
 
@@ -220,9 +217,12 @@ def bangun_model(data, anggaran, bobot, P, H, kunci=None, tolak=None,
                     name=f"c212a_{i}_{h}_{d}")
         mdl.addConstr(selesai[d] - M.T_MULAI <= M.BETA, name=f"c212b_{d}")
         mdl.addConstr(selesai[d] <= M.T_SELESAI, name=f"c215_{d}")
+        # (2.15) menuntut kunjungannya selesai sebelum jendela harian tutup,
+        # jadi durasinya ikut dihitung, bukan jam tibanya saja.
         for i in P:
-            mdl.addConstr(a_tiba[i, d] <= M.T_SELESAI + BIG_M * (1 - y[i, d]),
-                          name=f"c215a_{i}_{d}")
+            mdl.addConstr(
+                a_tiba[i, d] + tau[i] <= M.T_SELESAI + BIG_M * (1 - y[i, d]),
+                name=f"c215a_{i}_{d}")
 
     # ---------------- (2.17) total biaya tiket, akomodasi, dan bahan bakar
     # tidak melampaui anggaran
