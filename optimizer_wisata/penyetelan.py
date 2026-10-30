@@ -22,7 +22,9 @@ Empat percobaan:
 
     Percobaan C, tiga profil bobot.
         Membuktikan ketiganya benar-benar menggeser pilihan destinasi, bukan
-        hanya menggeser nilai Z.
+        hanya menggeser nilai Z. Ditutup penilaian silang: tiap solusi dinilai
+        di bawah ketiga fungsi objektif, untuk memeriksa apakah setiap run
+        benar-benar memenangkan objektifnya sendiri.
 
     Percobaan D, skenario cuaca.
         Saklar w dinyalakan dan dimatikan. Naskah memperlakukan w sebagai
@@ -180,6 +182,8 @@ def percobaan_c(data, n_seed):
           f"{'biaya':>12}")
 
     hasil, terpilih = [], {}
+    sol_simpan = {pr: [] for pr in M.PROFIL_BOBOT}
+    layak_simpan = {pr: [] for pr in M.PROFIL_BOBOT}
     for pr, bobot in M.PROFIL_BOBOT.items():
         z, dest, skor, biaya = [], [], [], []
         for k in range(n_seed):
@@ -190,6 +194,8 @@ def percobaan_c(data, n_seed):
             dest.append(len(ter))
             skor.append(sum(data["s_bar"][i, sol["hari"][i]] for i in ter))
             biaya.append(h["biaya_total"])
+            sol_simpan[pr].append(sol)
+            layak_simpan[pr].append(bool(h['layak']))
             if k == 0:
                 terpilih[pr] = set(ter)
         lam = "/".join(str(bobot[f"lambda{i}"]) for i in range(1, 5))
@@ -208,8 +214,46 @@ def percobaan_c(data, n_seed):
             beda = terpilih[nama[a]] ^ terpilih[nama[b]]
             print(f"   {M.NAMA_PROFIL[nama[a]]} vs {M.NAMA_PROFIL[nama[b]]}: "
                   f"berbeda {len(beda)} destinasi")
+
+    # Penilaian silang. Tiap solusi dinilai di bawah ketiga fungsi objektif.
+    # Diagonalnya seharusnya menang, sebab solusi itu memang hasil optimasi
+    # objektif tersebut. Bila kalah, run itu berhenti di optimum lokal yang
+    # lebih buruk daripada solusi yang kebetulan ditemukan run lain.
+    #
+    # Hanya seed yang ketiga solusinya layak yang dihitung, sebab Z tidak
+    # memuat penalti sehingga solusi melanggar bisa tampak unggul.
+    print('\n   Penilaian silang solusi terhadap ketiga fungsi objektif')
+    kalah = {pr: 0 for pr in nama}
+    rinci, sah = [], 0
+    for k in range(n_seed):
+        if not all(layak_simpan[pr][k] for pr in nama):
+            continue
+        sah += 1
+        for pr in nama:
+            z = {ps: M.nilai_objektif(data, sol_simpan[ps][k], ANGGARAN,
+                                      M.PROFIL_BOBOT[pr])['Z'] for ps in nama}
+            juara = min(z, key=z.get)
+            if juara == pr:
+                continue
+            kalah[pr] += 1
+            rinci.append({'seed': SEED_AWAL + k, 'objektif': pr,
+                          'dikalahkan_oleh': juara,
+                          'Z_sendiri': round(z[pr], 6),
+                          'Z_penantang': round(z[juara], 6)})
+    for pr in nama:
+        print(f'   objektif {M.NAMA_PROFIL[pr]:<22} kalah oleh solusi run lain'
+              f' pada {kalah[pr]} dari {sah} seed')
+    if rinci:
+        print(f'\n   {"seed":>6} {"objektif":<22} {"dikalahkan oleh":<22}'
+              f' {"Z sendiri":>11} {"Z penantang":>12}')
+        for r in rinci:
+            print(f'   {r["seed"]:>6} {M.NAMA_PROFIL[r["objektif"]]:<22}'
+                  f' {M.NAMA_PROFIL[r["dikalahkan_oleh"]]:<22}'
+                  f' {r["Z_sendiri"]:>11.6f} {r["Z_penantang"]:>12.6f}')
+
     return {"baris": hasil, "irisan_ketiga": len(semua),
-            "terpilih": {k: sorted(v) for k, v in terpilih.items()}}
+            "terpilih": {k: sorted(v) for k, v in terpilih.items()},
+            "silang": {"seed_sah": sah, "kalah": kalah, "rinci": rinci}}
 
 
 # ---------------------------------------------------------------- percobaan D
@@ -256,6 +300,11 @@ def main():
     mulai = time.perf_counter()
     cepat = "--cepat" in sys.argv
     n_seed = 3 if cepat else JUMLAH_SEED
+    # Tiap percobaan bisa dijalankan sendiri, misalnya "penyetelan.py c",
+    # supaya satu tabel Bab IV dapat dibangkitkan ulang tanpa mengulang
+    # seluruh sapuan yang memakan waktu puluhan menit.
+    semua = ("a", "b", "c", "d")
+    pilih = tuple(h for h in semua if h in sys.argv[1:]) or semua
     bobot = M.PROFIL_BOBOT["seimbang"]
     data = DS.muat_dataset(jumlah_hari=JUMLAH_HARI)
 
@@ -265,14 +314,15 @@ def main():
     print(f"seed      : {SEED_AWAL} sampai {SEED_AWAL + n_seed - 1}")
     print()
 
-    a = percobaan_a(data, bobot, n_seed)
-    b = percobaan_b(data, bobot, n_seed)
-    c = percobaan_c(data, n_seed)
-    d = percobaan_d(bobot, n_seed, JUMLAH_HARI)
+    a = percobaan_a(data, bobot, n_seed) if "a" in pilih else None
+    b = percobaan_b(data, bobot, n_seed) if "b" in pilih else None
+    c = percobaan_c(data, n_seed) if "c" in pilih else None
+    d = percobaan_d(bobot, n_seed, JUMLAH_HARI) if "d" in pilih else None
 
     os.makedirs(FOLDER, exist_ok=True)
     cap = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = os.path.join(FOLDER, f"penyetelan_{cap}.json")
+    tanda = "" if pilih == semua else "_" + "".join(pilih)
+    path = os.path.join(FOLDER, f"penyetelan{tanda}_{cap}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"dataset": data["data_path"], "anggaran": ANGGARAN,
                    "anggaran_ketat": ANGGARAN_KETAT, "hari": JUMLAH_HARI,
