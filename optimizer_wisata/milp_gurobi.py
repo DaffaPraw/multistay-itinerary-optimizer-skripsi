@@ -144,6 +144,21 @@ def bangun_model(data, anggaran, bobot, P, H, kunci=None, tolak=None,
         (gp.quicksum(x[i, b, d] for b in N if (i, b) in arc) == y[i, d] for i in P for d in D),
         name="c29b")
 
+    # ---------------- (2.9c) konservasi aliran pada destinasi
+    # Tersirat dari (2.9a) dan (2.9b), sebab keduanya menyamakan derajat masuk dan
+    # derajat keluar pada y[i,d] yang sama. Tetap dituliskan karena naskah
+    # menyebut tiga batasan kontinuitas, dan kode semestinya memperlihatkan
+    # ketiganya. Batasan ini tidak pernah mengikat dan presolve Gurobi membuangnya.
+    #
+    # Lingkupnya hanya destinasi. Pada akomodasi konservasi aliran justru keliru:
+    # (2.10) dan (2.11) sengaja memberi derajat keluar z[h,d] dan derajat masuk
+    # z[h, malam berikutnya], yang memang berbeda pada hari yang berpindah hotel.
+    mdl.addConstrs(
+        (gp.quicksum(x[a, i, d] for a in N if (a, i) in arc)
+         == gp.quicksum(x[i, b, d] for b in N if (i, b) in arc)
+         for i in P for d in D),
+        name="c29c")
+
     # ---------------- (2.10) hari d berangkat dari akomodasi malam d
     mdl.addConstrs(
         (gp.quicksum(x[h, b, d] for b in N if (h, b) in arc) == z[h, d] for h in H for d in D),

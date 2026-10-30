@@ -405,6 +405,9 @@ def _baca_argumen():
                    help="MILP: jumlah utas Gurobi. Bawaannya seluruh utas mesin "
                         "pada subset dan separuhnya pada dataset penuh, sebab "
                         "memori yang terpakai sebanding dengan jumlah utas")
+    p.add_argument("--memori", type=float, default=None,
+                   help="MILP: batas memori Gurobi, GB. Dipakai ketika beberapa "
+                        "ukuran dijalankan serentak dan jatah mesin harus dibagi")
     return p.parse_args()
 
 
@@ -444,7 +447,7 @@ def main():
                                                  f"gurobi_n{arg.n}.log"),
                          nama_catatan=f"perbandingan_metode_n{arg.n}",
                          nodefile_gb=NODEFILE_GB,
-                         batas_memori_gb=BATAS_MEMORI_GB,
+                         batas_memori_gb=arg.memori or BATAS_MEMORI_GB,
                          nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"),
                          utas=arg.utas)
     elif perintah == "banding-penuh":
@@ -463,7 +466,7 @@ def main():
                          log_berkas=log,
                          nama_catatan="perbandingan_metode_penuh",
                          nodefile_gb=NODEFILE_GB,
-                         batas_memori_gb=BATAS_MEMORI_GB,
+                         batas_memori_gb=arg.memori or BATAS_MEMORI_GB,
                          nodefile_dir=os.path.join(FOLDER_HASIL, "nodefile"),
                          utas=arg.utas or UTAS_PENUH)
     elif perintah == "kunci":
