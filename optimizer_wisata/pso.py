@@ -267,7 +267,7 @@ def terjemahkan(data, posisi, anggaran, kunci=None, tolak=None,
                 calon = M.rute_tetangga_terdekat(data, hotel[d], hotel[M.malam_akhir(d, m)],
                                        isi_hari[d] + [i])
                 _, selesai, langgar = M.jadwal_hari(data, calon, d)
-                if selesai - M.T_MULAI > M.BETA or selesai > M.T_SELESAI or langgar:
+                if selesai - M.T_MULAI > M.BETA or langgar:
                     continue
                 isi_hari[d].append(i)
                 break
@@ -315,7 +315,7 @@ def _perbaiki_kunci(data, solusi, kunci, kota_hari):
             while True:
                 calon = M.rute_tetangga_terdekat(data, urutan[0], urutan[-1], calon_isi)
                 _, selesai, langgar = M.jadwal_hari(data, calon, d)
-                muat = selesai - M.T_MULAI <= M.BETA and selesai <= M.T_SELESAI and not langgar
+                muat = selesai - M.T_MULAI <= M.BETA and not langgar
                 if muat or len(calon_isi) <= 1:
                     break
                 # buang destinasi berskor terendah yang tidak terkunci

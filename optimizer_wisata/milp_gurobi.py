@@ -216,7 +216,9 @@ def bangun_model(data, anggaran, bobot, P, H, kunci=None, tolak=None,
                     selesai[d] >= a_tiba[i, d] + tau[i] + t_mat[i, h] - BIG_M * (1 - x[i, h, d]),
                     name=f"c212a_{i}_{h}_{d}")
         mdl.addConstr(selesai[d] - M.T_MULAI <= M.BETA, name=f"c212b_{d}")
-        mdl.addConstr(selesai[d] <= M.T_SELESAI, name=f"c215_{d}")
+        # Batasan selesai[d] <= T_selesai tidak dituliskan. Ia tidak punya
+        # padanan di naskah, dan atur_waktu menjamin beta tidak melebihi lebar
+        # jendela, sehingga (2.12) di atas sudah menyiratkannya.
         # (2.15) menuntut kunjungannya selesai sebelum jendela harian tutup,
         # jadi durasinya ikut dihitung, bukan jam tibanya saja.
         for i in P:

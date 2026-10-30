@@ -37,9 +37,11 @@ import dataset
 T_MULAI = dataset.JAM_MULAI_AKTIVITAS * 60
 T_SELESAI = dataset.JAM_SELESAI_AKTIVITAS * 60
 # Kuota waktu aktivitas harian beta, dalam menit. Tabel 2.9 memperlakukannya
-# sebagai parameter masukan dan tidak menetapkan nilainya, jadi angka di bawah
-# hanya nilai bawaan.
-BETA = 600.0
+# sebagai parameter masukan dan tidak menetapkan nilainya. Nilai bawaannya
+# dibuat sama dengan lebar jendela aktivitas, jadi program tidak memberlakukan
+# batas harian kedua di luar jendelanya sendiri. Pengguna tetap dapat
+# mempersempitnya lewat atur_waktu.
+BETA = float(T_SELESAI - T_MULAI)
 
 
 def atur_waktu(beta=None, jam_mulai=None, jam_selesai=None):
@@ -67,6 +69,10 @@ def atur_waktu(beta=None, jam_mulai=None, jam_selesai=None):
         dataset.JAM_SELESAI_AKTIVITAS = selesai
         T_MULAI = mulai * 60
         T_SELESAI = selesai * 60
+        if beta is None:
+            # Kuota bawaan sama dengan lebar jendela, jadi ia ikut berubah
+            # ketika jendelanya berubah. Kuota yang disebut tegas tidak diganti.
+            BETA = float(T_SELESAI - T_MULAI)
     if beta is not None:
         beta = float(beta)
         if beta <= 0:
@@ -318,8 +324,9 @@ def hitung_penalti(data, solusi, anggaran, minimum_kategori=None, kategori_wajib
     if lebih_anggaran > TOLERANSI:
         pesan.append(f"Anggaran terlampaui sebesar Rp{lebih_anggaran:,.0f}.")
 
-    # jam operasional (2.14), kuota waktu harian (2.12), dan batas tutup
-    # jendela aktivitas (2.15)
+    # jam operasional (2.14) dan kuota waktu harian (2.12). Batas tutup
+    # jendela tidak diperiksa terpisah: beta tidak pernah melebihi lebar
+    # jendela, sehingga kuota di bawah sudah menyiratkannya.
     langgar_jam = 0
     langgar_kuota = 0
     for d in D:
@@ -336,9 +343,6 @@ def hitung_penalti(data, solusi, anggaran, minimum_kategori=None, kategori_wajib
         if pakai > BETA + TOLERANSI:
             langgar_kuota += 1
             pesan.append(f"Hari {d} memakai {pakai:.0f} menit, melebihi kuota {BETA:.0f} menit.")
-        if selesai > T_SELESAI + TOLERANSI:
-            langgar_kuota += 1
-            pesan.append(f"Hari {d} selesai pukul {selesai / 60:.2f}, melewati jam selesai aktivitas.")
     if langgar_jam:
         pesan.append(f"{langgar_jam} kunjungan berada di luar jam operasional destinasi.")
 
@@ -500,11 +504,13 @@ def rute_tetangga_terdekat(data, awal, akhir, isi):
 def hari_muat(data, urutan, d):
     """Apakah rute hari d masih layak, beserta waktu selesainya.
 
-    Tiga hal diperiksa sekaligus: kuota waktu harian (2.12), batas tutup jendela
-    aktivitas (2.15), dan jam operasional destinasi (2.14).
+    Dua hal diperiksa sekaligus: kuota waktu harian (2.12) dan jam operasional
+    destinasi (2.14). Batas tutup jendela aktivitas tidak diperiksa terpisah,
+    sebab beta tidak pernah melebihi lebar jendela sehingga kuotanya sudah
+    menyiratkan batas itu.
     """
     _, selesai, langgar = jadwal_hari(data, urutan, d)
-    muat = (selesai - T_MULAI <= BETA and selesai <= T_SELESAI and langgar == 0)
+    muat = (selesai - T_MULAI <= BETA and langgar == 0)
     return muat, selesai
 
 
