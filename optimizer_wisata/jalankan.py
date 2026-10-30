@@ -208,7 +208,10 @@ def jalankan_banding(data, anggaran=ANGGARAN, seed=SEED,
     if log_berkas:
         print(f"  pracatat heuristik: {_catat(nama_catatan + '_heuristik', {'seed': seed, 'anggaran': anggaran, 'subset_P': P, 'subset_H': H, 'baris': heuristik})}")
         print(f"  catatan Gurobi    : {log_berkas}")
-    print(f"  MILP berjalan, batas waktu {batas_waktu / 3600:.2f} jam ...")
+    if batas_waktu is None:
+        print("  MILP berjalan, tanpa batas waktu, berhenti pada batas memori ...")
+    else:
+        print(f"  MILP berjalan, batas waktu {batas_waktu / 3600:.2f} jam ...")
 
     hasil_milp = MILP.jalankan_milp(data, anggaran, bobot, maks_destinasi=maks_destinasi,
                                     maks_hotel=maks_hotel, batas_waktu=batas_waktu,
@@ -400,7 +403,8 @@ def _baca_argumen():
                    help="MILP: jumlah akomodasi kandidat pada subset")
     p.add_argument("--batas", type=int, default=None,
                    help="MILP: batas waktu penyelesai, detik. Bawaannya 120 detik "
-                        "pada subset dan enam jam pada dataset penuh")
+                        "pada subset dan enam jam pada dataset penuh. Nol berarti "
+                        "tanpa batas waktu, jalan berhenti pada batas memori")
     p.add_argument("--utas", type=int, default=None,
                    help="MILP: jumlah utas Gurobi. Bawaannya seluruh utas mesin "
                         "pada subset dan separuhnya pada dataset penuh, sebab "
@@ -438,7 +442,9 @@ def main():
         # membandingkan ketiga metode pada beberapa ukuran dataset. Pengaman
         # memori dan berkas luapan dipasang juga di sini, bukan hanya pada
         # ukuran penuh, karena subset besar pun dapat berjam-jam.
-        batas = arg.batas or 120
+        # --batas 0 berarti tanpa batas waktu, dibiarkan jalan sampai batas
+        # memori menghentikannya.
+        batas = None if arg.batas == 0 else (arg.batas or 120)
         os.makedirs(FOLDER_HASIL, exist_ok=True)
         jalankan_banding(data, anggaran=arg.anggaran, seed=arg.seed,
                          maks_destinasi=arg.n, maks_hotel=arg.hotel,
@@ -454,10 +460,13 @@ def main():
         # Seluruh destinasi dan akomodasi. ambil_subset membagi kuota per kota,
         # jadi kuotanya dikalikan jumlah kota supaya tidak ada yang terpotong.
         n_kota = len(data["kota"])
-        batas = arg.batas or BATAS_MILP_PENUH_DETIK
+        # --batas 0 berarti tanpa batas waktu, dibiarkan jalan sampai batas
+        # memori menghentikannya.
+        batas = None if arg.batas == 0 else (arg.batas or BATAS_MILP_PENUH_DETIK)
         # Namanya menyebut batas waktunya supaya catatan Gurobi dari jalan yang
         # lebih pendek tidak tertimpa jalan yang lebih panjang.
-        log = os.path.join(FOLDER_HASIL, f"gurobi_penuh_{batas // 3600}jam.log")
+        sebutan = "takterbatas" if batas is None else f"{batas // 3600}jam"
+        log = os.path.join(FOLDER_HASIL, f"gurobi_penuh_{sebutan}.log")
         os.makedirs(FOLDER_HASIL, exist_ok=True)
         jalankan_banding(data, anggaran=arg.anggaran, seed=arg.seed,
                          maks_destinasi=len(data["P"]) * n_kota,

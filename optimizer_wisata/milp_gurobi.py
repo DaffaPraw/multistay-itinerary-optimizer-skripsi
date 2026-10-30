@@ -327,7 +327,15 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
 
     mdl, vr, arc = bangun_model(sub, anggaran, bobot, P, H, kunci, tolak,
                                 minimum_kategori, kategori_wajib)
-    mdl.Params.TimeLimit = batas_waktu
+    # batas_waktu None berarti tanpa batas waktu. Batasnya harus dilepas
+    # secara tersurat, sebab bangun_model sudah memasang BATAS_WAKTU_DETIK
+    # supaya pemakaian cepat tidak menggantung; sekadar tidak memasang apa pun
+    # di sini akan meninggalkan batas bawaan itu tetap berlaku.
+    # Dipakai pada Bab IV supaya ketiga ukuran dataset dihentikan oleh sebab
+    # yang sama, yaitu anggaran memori yang sama, bukan oleh batas waktu yang
+    # mengikat berbeda-beda karena kecepatan pencarian tiap ukuran berbeda.
+    mdl.Params.TimeLimit = (GRB.INFINITY if batas_waktu is None
+                            else batas_waktu)
     if nodefile_gb:
         mdl.Params.NodefileStart = nodefile_gb
         if nodefile_dir:
@@ -336,12 +344,14 @@ def jalankan_milp(data, anggaran, bobot, kunci=None, tolak=None,
     if batas_memori_gb:
         mdl.Params.SoftMemLimit = batas_memori_gb
     if utas:
-        # Jalan enam jam pada dataset penuh berhenti karena batas memori padahal
-        # berkas luapan simpul tetap nol byte. Jadi yang menghabiskan memori
-        # bukan pohon pencarian melainkan pekerjaan tiap utas, yang masing-masing
-        # memegang faktorisasi sendiri. Pada mesin dua belas utas itu dua belas
-        # salinan. Menurunkan jumlah utas memperlambat pencarian, tetapi
-        # memperpanjang umur jalan yang batas waktunya memang panjang.
+        # Memori yang terpakai sebanding dengan jumlah utas, sebab tiap utas
+        # memegang faktorisasi LP-nya sendiri dan bagian itu tidak dapat
+        # ditumpahkan ke disk. Pada jalan enam jam yang pertama berkas luapan
+        # simpul tetap nol byte, jadi seluruh memorinya habis di bagian
+        # per-utas itu. Pada jalan berikutnya dengan NodefileStart lebih
+        # rendah luapannya terpakai berat, sampai lima gigabita, namun jalan
+        # tetap berhenti karena bagian per-utas. Jadi kedua tuas diperlukan:
+        # luapan menahan pohon pencarian, jumlah utas menahan sisanya.
         mdl.Params.Threads = utas
     if log_berkas:
         # Pada subset kecil Gurobi selesai dalam hitungan detik dan catatannya
