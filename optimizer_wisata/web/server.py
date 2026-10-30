@@ -227,6 +227,11 @@ def rangkai_hasil(data, keluaran, anggaran, tolak=None):
             "total": round(hasil["biaya_total"]),
         },
         "jumlah_destinasi": int(sum(solusi["pilih"].values())),
+        # Besaran berdimensi, sehingga sah dibandingkan antarprofil.
+        # Z tidak, sebab tiap profil memakai bobot lambda yang berbeda.
+        "skor_total": round(sum(data["s_bar"][i, solusi["hari"][i]]
+                                for i in data["P"]
+                                if solusi["pilih"].get(i)), 2),
         "destinasi_kandidat": len(data["P"]),
         "total_jarak": round(sum(h["jarak_km"] for h in hari), 2),
         "total_tempuh": round(sum(h["waktu_tempuh"] for h in hari), 1),
@@ -267,6 +272,11 @@ def _jalankan_kerja(kerja_id, permintaan):
         minat = permintaan.get("minat") or {}
         kategori = sorted(minat.keys()) or None
         minimum_kategori = {k: int(v) for k, v in minat.items() if int(v) > 0} or None
+        # Persamaan (2.7a) baru mengikat bila kategori wajibnya disebutkan, baik
+        # pada penalti, pada langkah perbaikan, maupun pada batasan MILP. Yang
+        # wajib adalah kategori yang diberi jumlah minimum oleh pengguna;
+        # kategori yang dicentang tanpa minimum cukup menyaring kandidat.
+        kategori_wajib = sorted(minimum_kategori) if minimum_kategori else None
 
         kunci = permintaan.get("kunci") or None
         tolak = permintaan.get("tolak") or None
@@ -331,12 +341,14 @@ def _jalankan_kerja(kerja_id, permintaan):
                 keluaran = PSO.jalankan_pso(
                     data, anggaran, bobot, kunci=kunci, tolak=tolak,
                     minimum_kategori=minimum_kategori,
+                    kategori_wajib=kategori_wajib,
                     seed=seed, kabar=kabar)
             elif mt == "cws":
                 tahap(f"{label}: Clarke-Wright Savings", dasar)
                 keluaran = CWS.jalankan_cws(
                     data, anggaran, bobot, kunci=kunci, tolak=tolak,
-                    minimum_kategori=minimum_kategori)
+                    minimum_kategori=minimum_kategori,
+                    kategori_wajib=kategori_wajib)
             else:
                 raise ValueError(f"Metode tidak dikenal: {mt}")
 

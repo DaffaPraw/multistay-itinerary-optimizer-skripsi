@@ -278,16 +278,23 @@ function gambarHasil(bungkus) {
   const bar = el("profil-bar");
   bar.classList.toggle("sembunyi", nama.length < 2);
   if (nama.length >= 2) {
-    const terbaik = nama.reduce((a, b) =>
-      bungkus.hasil[b].Z < bungkus.hasil[a].Z ? b : a);
+    // Z ketiga profil berasal dari fungsi objektif yang berbeda, sebab bobot
+    // lambda pada (2.1) berbeda, sehingga tidak sebanding antarprofil. Yang
+    // ditandai hanya besaran berdimensi: skor total dan biaya total.
+    const unggul = (ambil, lebihBaik) => nama.reduce((a, b) =>
+      lebihBaik(ambil(bungkus.hasil[b]), ambil(bungkus.hasil[a])) ? b : a);
+    const skorTertinggi = unggul((h) => h.skor_total, (x, y) => x > y);
+    const biayaTermurah = unggul((h) => h.biaya.total, (x, y) => x < y);
     bar.innerHTML = nama.map((n) => {
       const h = bungkus.hasil[n];
       return `<button type="button" class="profil-kartu" data-profil="${n}">
         <span class="pk-nama">${aman(h.profil)} &middot; ${aman(h.metode)}</span>
-        <span class="pk-z">${h.Z.toFixed(4)}</span>
+        <span class="pk-z" title="Nilai objektif profil ini. Tidak sebanding antarprofil karena bobotnya berbeda.">${h.Z.toFixed(4)}</span>
         <span class="pk-rinci">${h.jumlah_destinasi} destinasi &middot;
+          skor ${h.skor_total.toFixed(1)} &middot;
           ${rupiah(h.biaya.total)}</span>
-        ${n === terbaik ? '<span class="pk-tandai">nilai objektif terkecil</span>' : ""}
+        ${n === skorTertinggi ? '<span class="pk-tandai">skor tertinggi</span>' : ""}
+        ${n === biayaTermurah ? '<span class="pk-tandai">biaya termurah</span>' : ""}
       </button>`;
     }).join("");
     bar.querySelectorAll("[data-profil]").forEach((b) =>
