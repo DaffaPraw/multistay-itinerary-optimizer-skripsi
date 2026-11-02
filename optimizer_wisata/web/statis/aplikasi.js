@@ -103,7 +103,24 @@ async function muatKeterangan() {
   el("daftar-profil").innerHTML =
     isi.profil.map((p) => `<span class="cip">${aman(p.nama)}</span>`).join("");
 
-  el("tanggal").value = isi.tanggal_awal || "mengikuti data cuaca";
+  // Pemilih tanggal dibatasi pada jangkauan ramalan Open-Meteo, sebab di luar
+  // rentang itu peladen jatuh kembali ke snapshot cuaca pada berkas Excel.
+  if (isi.tanggal_min) el("tanggal").min = isi.tanggal_min;
+  if (isi.tanggal_maks) el("tanggal").max = isi.tanggal_maks;
+  el("tanggal").value = isi.tanggal_awal || "";
+
+  // Jam dipilih dari daftar, bukan diketik. Jam mulai 0 sampai 23, jam selesai
+  // 1 sampai 24, mengikuti batas yang sama dengan isian angka sebelumnya.
+  const jamPilihan = (dari, sampai) => {
+    let keluar = "";
+    for (let j = dari; j <= sampai; j += 1) {
+      const label = String(j).padStart(2, "0") + ".00";
+      keluar += `<option value="${j}">${label}</option>`;
+    }
+    return keluar;
+  };
+  el("jam-mulai").innerHTML = jamPilihan(0, 23);
+  el("jam-selesai").innerHTML = jamPilihan(1, 24);
   el("jam-mulai").value = Math.round(isi.mulai_menit / 60);
   el("jam-selesai").value = Math.round(
     (isi.selesai_menit != null ? isi.selesai_menit : isi.mulai_menit + isi.kuota_menit) / 60);
@@ -199,6 +216,7 @@ function kumpulkan() {
     metode: el("metode").value,
     pengguna: parseInt(el("pengguna").value, 10) || 1,
     beta: parseInt(el("kuota").value, 10) || null,
+    tanggal: el("tanggal").value || null,
     jam_mulai: parseInt(el("jam-mulai").value, 10),
     jam_selesai: parseInt(el("jam-selesai").value, 10),
     cuaca: el("cuaca").checked ? 1 : 0,

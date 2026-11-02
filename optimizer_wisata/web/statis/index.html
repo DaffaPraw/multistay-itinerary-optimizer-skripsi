@@ -80,8 +80,9 @@
           <div class="dua-kolom">
             <div>
               <label class="label-kecil">Tanggal mulai</label>
-              <input type="text" id="tanggal" class="kolom" readonly>
-              <p class="bantu">Mengikuti rentang data cuaca yang tersedia.</p>
+              <input type="date" id="tanggal" class="kolom">
+              <p class="bantu">Cuaca diambil langsung dari Open-Meteo untuk tanggal ini,
+                sepanjang jumlah hari perjalanan.</p>
             </div>
             <div>
               <label class="label-kecil">Jumlah hari</label>
@@ -95,11 +96,11 @@
           <div class="dua-kolom">
             <div>
               <label class="label-kecil">Jam mulai aktivitas</label>
-              <input type="number" id="jam-mulai" min="0" max="23" class="kolom">
+              <select id="jam-mulai" class="kolom"></select>
             </div>
             <div>
               <label class="label-kecil">Jam selesai aktivitas</label>
-              <input type="number" id="jam-selesai" min="1" max="24" class="kolom">
+              <select id="jam-selesai" class="kolom"></select>
             </div>
           </div>
           <label class="label-kecil" style="margin-top:14px">

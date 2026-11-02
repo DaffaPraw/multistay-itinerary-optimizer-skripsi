@@ -536,11 +536,18 @@ def validasi_dataset(P, H, node, cuaca, tanggal):
 
 def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
                  tanggal_mulai=None, jumlah_hari=3, v_ref=None,
-                 cuaca_aktif=CUACA_AKTIF):
+                 cuaca_aktif=CUACA_AKTIF, cuaca_hidup=False):
     """Himpunan node beserta parameter model.
 
     Tanggal di luar rentang data cuaca digeser ke awal rentang, dan
     pergeserannya dicatat di 'catatan' supaya tidak diam-diam.
+
+    cuaca_hidup menyalakan pengambilan cuaca dari Open-Meteo lewat cuaca.py,
+    sehingga tanggal mana pun dapat dipakai. Bawaannya mati, dan selama mati
+    perilakunya persis seperti semula, yaitu membaca lembar Excel. Percobaan
+    Bab IV memakai yang mati supaya angkanya dapat direproduksi; hanya aplikasi
+    web yang menyalakannya. Kegagalan mengambil data hidup tidak menggagalkan
+    pemuatan, melainkan jatuh kembali ke lembar Excel dengan sebabnya dicatat.
     """
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Dataset tidak ditemukan: {data_path}")
@@ -577,9 +584,38 @@ def muat_dataset(data_path=DATA_PATH, kota_dipilih=None, kategori_dipilih=None,
     if not tanggal_tersedia:
         raise ValueError("Sheet cuaca tidak memuat satu pun tanggal yang terbaca.")
     if tanggal_mulai is None:
-        tanggal_mulai = tanggal_tersedia[0]
+        tanggal_mulai = tanggal_tersedia[0] if not cuaca_hidup else date.today()
     elif isinstance(tanggal_mulai, str):
         tanggal_mulai = datetime.strptime(tanggal_mulai, "%Y-%m-%d").date()
+    elif isinstance(tanggal_mulai, datetime):
+        tanggal_mulai = tanggal_mulai.date()
+
+    if cuaca_hidup:
+        # Diambil setelah penyaringan kota, jadi hanya kota yang benar-benar
+        # dipakai yang diminta ke Open-Meteo.
+        import cuaca as CH
+        try:
+            tambahan, sumber_cuaca = CH.ambil_rho(
+                CH.titik_dari_node(node), tanggal_mulai, jumlah_hari)
+            cuaca.update(tambahan)
+            tanggal_tersedia = sorted({t for (_, t) in cuaca})
+            # Sumbernya disebut, sebab peluang dari seasonal jauh kurang
+            # tajam daripada ramalan biasa dan pengguna perlu tahu mana
+            # yang sedang dipakainya.
+            KETERANGAN_SUMBER = {
+                "ramalan": "ramalan Open-Meteo, peluang hujan per jam",
+                "arsip": "arsip Open-Meteo, curah hujan yang sudah terjadi",
+                "seasonal": "ramalan musiman Open-Meteo, peluang turunan dari sebaran ensemble dan jauh kurang tajam",
+            }
+            catatan.append(
+                f"Cuaca untuk {tanggal_mulai} sampai "
+                f"{tanggal_mulai + timedelta(days=jumlah_hari - 1)} diambil dari "
+                f"{KETERANGAN_SUMBER.get(sumber_cuaca, sumber_cuaca)}.")
+        except (CH.GalatCuaca, ValueError, OSError) as galat:
+            # Cadangannya lembar Excel. Sebabnya dicatat supaya pengguna tahu
+            # angka mana yang sedang dipakainya, bukan diam-diam berganti.
+            catatan.append(
+                f"Cuaca langsung gagal diambil, dipakai data Excel. Sebab: {galat}")
 
     tanggal = [tanggal_mulai + timedelta(days=k) for k in range(jumlah_hari)]
     if any(t not in tanggal_tersedia for t in tanggal):

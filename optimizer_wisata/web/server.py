@@ -28,6 +28,7 @@ import threading
 import time
 import traceback
 import uuid
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -38,6 +39,7 @@ if AKAR not in sys.path:
 
 import clarke_wright as CWS          # noqa: E402
 import ors as ORS                    # noqa: E402
+import cuaca as CH
 import dataset as DS                 # noqa: E402
 import model as M                    # noqa: E402
 import pso as PSO                    # noqa: E402
@@ -66,7 +68,7 @@ _kunci_kerja = threading.Lock()
 _kerja = {}
 
 
-def ambil_data(kota, kategori, hari, cuaca=DS.CUACA_AKTIF):
+def ambil_data(kota, kategori, hari, cuaca=DS.CUACA_AKTIF, tanggal=None):
     """Memuat dataset sekali untuk setiap kombinasi penyaringan, lalu dipakai ulang.
 
     Pemuatan membaca berkas Excel dan menyusun matriks seluruh pasangan node,
@@ -77,8 +79,11 @@ def ambil_data(kota, kategori, hari, cuaca=DS.CUACA_AKTIF):
     # dataset dimuat. Tanpa itu, mengubah jendela memakai ulang dataset lama.
     # Jendela aktivitas dan saklar cuaca ikut jadi kunci, sebab rho diambil pada
     # jendela itu dan skor terkoreksi s_bar dihitung, keduanya saat dataset dimuat.
+    # Tanggal ikut jadi kunci. Tanpa itu, mengganti tanggal akan memakai ulang
+    # dataset tanggal sebelumnya, beserta rho-nya yang sudah tidak berlaku.
     tanda = (tuple(sorted(kota or ())), tuple(sorted(kategori or ())), int(hari),
-             DS.JAM_MULAI_AKTIVITAS, DS.JAM_SELESAI_AKTIVITAS, int(cuaca))
+             DS.JAM_MULAI_AKTIVITAS, DS.JAM_SELESAI_AKTIVITAS, int(cuaca),
+             str(tanggal or ''))
     with _kunci_data:
         if tanda in _simpanan_data:
             return _simpanan_data[tanda]
@@ -87,6 +92,10 @@ def ambil_data(kota, kategori, hari, cuaca=DS.CUACA_AKTIF):
         kategori_dipilih=list(kategori) if kategori else None,
         jumlah_hari=int(hari),
         cuaca_aktif=int(cuaca),
+        tanggal_mulai=tanggal,
+        # Cuaca hidup hanya bila tanggalnya memang diminta, sehingga
+        # permintaan tanpa tanggal tetap memakai lembar Excel.
+        cuaca_hidup=bool(tanggal),
     )
     with _kunci_data:
         _simpanan_data[tanda] = data
@@ -287,10 +296,20 @@ def _jalankan_kerja(kerja_id, permintaan):
                     f"Destinasi tidak dapat dikunci sekaligus ditolak: {sorted(bentrok)}")
 
         tahap("memuat dataset", 0.08)
+        # Naskah paragraf 448: kuota harian dan jendela aktivitas adalah masukan.
+        # Ditetapkan sebelum ambil_data supaya rho memakai jendela yang sama.
+        # Urutan ini wajib: atur_waktu mengubah dataset.JAM_MULAI_AKTIVITAS dan
+        # JAM_SELESAI_AKTIVITAS, dan rho diambil pada jendela itu, baik dari
+        # lembar Excel maupun dari Open-Meteo.
+        if any(permintaan.get(k) for k in ("beta", "jam_mulai", "jam_selesai")):
+            M.atur_waktu(permintaan.get("beta"), permintaan.get("jam_mulai"),
+                         permintaan.get("jam_selesai"))
+
         # Persamaan (2.2) bersifat opsional. Pengguna yang tidak peduli cuaca
         # memperoleh skor apa adanya; yang peduli memperoleh skor terkoreksi.
         cuaca = 1 if permintaan.get("cuaca") else 0
-        data = ambil_data(permintaan.get("kota"), kategori, hari, cuaca)
+        tanggal = permintaan.get("tanggal") or None
+        data = ambil_data(permintaan.get("kota"), kategori, hari, cuaca, tanggal)
 
         if kunci:
             asing = [i for i in kunci if i not in data["P"]]
@@ -298,12 +317,6 @@ def _jalankan_kerja(kerja_id, permintaan):
                 raise ValueError(
                     "Destinasi yang dikunci tidak ada pada kandidat setelah "
                     f"penyaringan kota dan kategori: {asing}")
-
-        # Naskah paragraf 448: kuota harian dan jendela aktivitas adalah masukan.
-        # Ditetapkan sebelum ambil_data supaya rho memakai jendela yang sama.
-        if any(permintaan.get(k) for k in ("beta", "jam_mulai", "jam_selesai")):
-            M.atur_waktu(permintaan.get("beta"), permintaan.get("jam_mulai"),
-                         permintaan.get("jam_selesai"))
 
         metode = (permintaan.get("metode") or "pso").lower()
         # Bawaannya menjalankan ketiga profil bobot sekaligus, sesuai rancangan
@@ -430,11 +443,25 @@ def geometri_rute(hari):
 
 # ---------------------------------------------------------------- keterangan
 def _tanggal_awal():
-    """Tanggal pertama yang tersedia pada data cuaca, dipakai sebagai awal perjalanan."""
-    try:
-        return str(ambil_data(None, None, 1)["tanggal"][0])
-    except Exception:                               # noqa: BLE001
-        return ""
+    """Tanggal bawaan pemilih tanggal pada formulir, yaitu hari ini.
+
+    Dulu nilainya tanggal pertama lembar cuaca Excel, sebab tanggalnya belum
+    dapat dipilih. Kini cuaca diambil dari Open-Meteo, sehingga hari ini jauh
+    lebih berguna sebagai nilai bawaan.
+    """
+    return date.today().isoformat()
+
+
+def _batas_tanggal():
+    """Rentang tanggal yang boleh dipilih.
+
+    Mengikuti jangkauan terjauh yang disediakan Open-Meteo, yaitu Seasonal
+    Forecast API sejauh 184 hari. Tanggal yang masih terjangkau ramalan biasa
+    memakai ramalan itu, yang lebih tajam; selebihnya memakai seasonal.
+    """
+    hari_ini = date.today()
+    return (hari_ini.isoformat(),
+            (hari_ini + timedelta(days=CH.HARI_SEASONAL_MAKS)).isoformat())
 
 
 def keterangan():
@@ -461,6 +488,8 @@ def keterangan():
         "mulai_menit": M.T_MULAI,
         "selesai_menit": M.T_SELESAI,
         "tanggal_awal": _tanggal_awal(),
+        "tanggal_min": _batas_tanggal()[0],
+        "tanggal_maks": _batas_tanggal()[1],
         "destinasi": [
             {"id": k, "nama": v["nama"], "kota": v["kota"],
              "kategori": v["kategori"],
